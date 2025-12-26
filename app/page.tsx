@@ -2,17 +2,17 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-// ↓ app/lib/supabase.ts がある前提のパスです
 import { supabase } from './lib/supabase';
 
 export default function Home() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  // 初期値は 'me'
   const [payer, setPayer] = useState<'me' | 'partner'>('me');
+  
+  // ★追加: カテゴリの状態（初期値は 'food' = 食費）
+  const [category, setCategory] = useState<string>('food');
 
-  // 画像が選択されたらAI解析へ送る
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -49,7 +49,6 @@ export default function Home() {
     };
   };
 
-  // Supabaseへ保存
   const handleSave = async () => {
     if (!result) return;
     setSaving(true);
@@ -61,6 +60,7 @@ export default function Home() {
         amount: result.amount,
         purchase_date: result.date,
         paid_by: payer,
+        category: category, // ★追加: カテゴリも保存
       });
 
     setSaving(false);
@@ -70,17 +70,23 @@ export default function Home() {
       alert('保存に失敗しました: ' + error.message);
     } else {
       alert('保存しました！');
-      setResult(null); // 入力欄をクリア
-      // ファイル選択もリセットしたい場合はここでinputタグのvalueを操作する必要がありますが、
-      // 一旦シンプルに結果だけクリアします。
+      setResult(null);
     }
   };
+
+  // カテゴリの定義
+  const categories = [
+    { id: 'food', label: '食費', icon: '🥦' },
+    { id: 'daily', label: '日用品', icon: '🧻' },
+    { id: 'eatout', label: '外食', icon: '🍻' },
+    { id: 'transport', label: '交通費', icon: '🚃' },
+    { id: 'other', label: 'その他', icon: '📦' },
+  ];
 
   return (
     <div className="p-8 max-w-md mx-auto min-h-screen bg-gray-50 text-gray-800">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Scan.io</h1>
-        {/* 精算ページへのリンク */}
         <Link 
           href="/settlement" 
           className="text-sm font-bold text-blue-600 border border-blue-600 px-3 py-1 rounded-full hover:bg-blue-50 transition"
@@ -89,7 +95,6 @@ export default function Home() {
         </Link>
       </div>
       
-      {/* スキャンエリア */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
         <label className="block mb-4 font-bold text-gray-700">レシートをスキャン</label>
         <input
@@ -102,7 +107,6 @@ export default function Home() {
         {loading && <p className="text-center text-blue-500 mt-4 animate-pulse">AIが解析中...</p>}
       </div>
 
-      {/* 結果表示エリア */}
       {result && (
         <div className="bg-white p-6 rounded-xl shadow-lg border-2 border-blue-100 animate-in fade-in slide-in-from-bottom-4">
           <h2 className="text-xl font-bold mb-4">読み取り結果</h2>
@@ -134,6 +138,26 @@ export default function Home() {
                   onChange={(e) => setResult({...result, amount: Number(e.target.value)})}
                   className="w-full text-2xl font-bold text-blue-600 border-b border-gray-200 focus:outline-none focus:border-blue-500"
                 />
+              </div>
+            </div>
+
+            {/* ★追加: カテゴリ選択エリア */}
+            <div className="pt-2">
+              <label className="text-xs text-gray-500 block mb-2">カテゴリ</label>
+              <div className="flex flex-wrap gap-2">
+                {categories.map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setCategory(cat.id)}
+                    className={`px-3 py-2 rounded-lg text-sm font-bold border transition ${
+                      category === cat.id
+                        ? 'bg-yellow-100 border-yellow-400 text-yellow-800'
+                        : 'bg-white border-gray-200 text-gray-500'
+                    }`}
+                  >
+                    {cat.icon} {cat.label}
+                  </button>
+                ))}
               </div>
             </div>
 

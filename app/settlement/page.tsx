@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase'; // パスが違う場合は修正してください
+import { supabase } from '../lib/supabase';
 import Link from 'next/link';
 
 type Expense = {
@@ -9,6 +9,7 @@ type Expense = {
   amount: number;
   purchase_date: string;
   paid_by: 'me' | 'partner' | null;
+  category: string | null; // ★追加
 };
 
 export default function SettlementPage() {
@@ -16,27 +17,32 @@ export default function SettlementPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   
-  // 表示中の月（初期値は今日）
   const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  // カテゴリごとのアイコン定義
+  const getCategoryIcon = (cat: string | null) => {
+    switch(cat) {
+      case 'food': return '🥦';
+      case 'daily': return '🧻';
+      case 'eatout': return '🍻';
+      case 'transport': return '🚃';
+      case 'other': return '📦';
+      default: return '📄';
+    }
+  };
 
   const fetchExpenses = async () => {
     setLoading(true);
     
-    // ▼▼▼ 修正箇所: 日本時間のまま検索するように修正 ▼▼▼
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
 
-    // 日付オブジェクトを "YYYY-MM-DD" 文字列に変換する関数
     const toYMD = (d: Date) => {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
 
-    // 月初 (1日) と 月末 (翌月の0日) を取得
     const firstDayStr = toYMD(new Date(year, month, 1));
     const lastDayStr = toYMD(new Date(year, month + 1, 0));
-    // ▲▲▲ 修正ここまで ▲▲▲
-
-    console.log(`Searching from ${firstDayStr} to ${lastDayStr}`); // デバッグ用ログ
 
     const { data, error } = await supabase
       .from('expenses')
@@ -54,19 +60,16 @@ export default function SettlementPage() {
     setLoading(false);
   };
 
-  // 月が変わるたびに再取得
   useEffect(() => {
     fetchExpenses();
   }, [currentMonth]);
 
-  // 月切り替えボタンの処理
   const changeMonth = (amount: number) => {
     const newDate = new Date(currentMonth);
     newDate.setMonth(newDate.getMonth() + amount);
     setCurrentMonth(newDate);
   };
 
-  // 削除ボタンの処理
   const handleDelete = async (id: number) => {
     if (!confirm('この記録を削除してもよろしいですか？')) return;
     
@@ -84,7 +87,6 @@ export default function SettlementPage() {
     setDeletingId(null);
   };
 
-  // 集計ロジック
   const totalMe = expenses
     .filter(e => e.paid_by === 'me')
     .reduce((sum, e) => sum + e.amount, 0);
@@ -103,15 +105,15 @@ export default function SettlementPage() {
     <div className="p-6 max-w-md mx-auto min-h-screen bg-gray-50 text-gray-800">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">精算</h1>
+        {/* 強制移動ボタンに変更 */}
         <button 
-            onClick={() => window.location.href = '/'} 
-            className="text-sm text-blue-600 underline bg-transparent border-none cursor-pointer"
-            >
-            ← 入力に戻る
+          onClick={() => window.location.href = '/'} 
+          className="text-sm text-blue-600 underline bg-transparent border-none cursor-pointer"
+        >
+          ← 入力に戻る
         </button>
       </div>
 
-      {/* 月切り替えエリア */}
       <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6">
         <button 
           onClick={() => changeMonth(-1)}
@@ -132,7 +134,6 @@ export default function SettlementPage() {
         <div className="text-center py-10 text-gray-500 animate-pulse">読み込み中...</div>
       ) : (
         <>
-          {/* 精算結果カード */}
           <div className={`p-6 rounded-xl text-white shadow-lg mb-8 transition-colors ${
             balance === 0 ? 'bg-gray-500' : balance > 0 ? 'bg-blue-600' : 'bg-pink-600'
           }`}>
@@ -151,7 +152,6 @@ export default function SettlementPage() {
             </p>
           </div>
 
-          {/* 内訳 */}
           <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-8">
             <h3 className="font-bold mb-4 border-b pb-2 text-sm text-gray-500">内訳</h3>
             <div className="flex justify-between mb-2">
@@ -164,7 +164,6 @@ export default function SettlementPage() {
             </div>
           </div>
 
-          {/* 履歴リスト */}
           <div>
             <h3 className="font-bold mb-4 text-gray-500 text-sm">{monthLabel}の履歴 ({expenses.length}件)</h3>
             {expenses.length === 0 ? (
@@ -173,9 +172,15 @@ export default function SettlementPage() {
               <ul className="space-y-3 pb-10">
                 {expenses.map((item) => (
                   <li key={item.id} className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-center text-sm border border-gray-100 group">
-                    <div>
-                      <p className="font-bold text-gray-800">{item.store_name || '店名なし'}</p>
-                      <p className="text-gray-400 text-xs">{item.purchase_date}</p>
+                    <div className="flex items-center gap-3">
+                      {/* ★追加: カテゴリアイコンを表示 */}
+                      <span className="text-2xl bg-gray-50 p-2 rounded-lg">
+                        {getCategoryIcon(item.category)}
+                      </span>
+                      <div>
+                        <p className="font-bold text-gray-800">{item.store_name || '店名なし'}</p>
+                        <p className="text-gray-400 text-xs">{item.purchase_date}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
