@@ -13,10 +13,9 @@ export async function POST(req: Request) {
     }
 
     const base64Data = imageBase64.split(",")[1];
-    // デフォルトをjpegにしつつ、フロントから送られてきたmimeTypeを優先
     const finalMimeType = mimeType || "image/jpeg";
 
-    // ★ここを修正: リストにあった確実なモデル名に変更
+    // 無料枠で安定して使えるモデルエイリアス
     const model = genAI.getGenerativeModel({
       model: "gemini-flash-latest",
       generationConfig: { responseMimeType: "application/json" }
@@ -24,7 +23,7 @@ export async function POST(req: Request) {
 
     const prompt = `
       このレシート画像を解析して、以下の情報をJSON形式で抽出してください。
-      日付はYYYY-MM-DD形式、金額は数値のみ。
+      日付はYYYY-MM-DD形式、金額は数値のみ。店名が不明なら"不明"としてください。
       { "store": "店名", "date": "日付", "amount": 金額 }
     `;
 
@@ -39,7 +38,7 @@ export async function POST(req: Request) {
     return NextResponse.json(JSON.parse(text));
 
   } catch (error: any) {
-    console.error("AI Error Details:", error);
+    console.error("AI Error:", error);
     return NextResponse.json(
       { error: error.message || "読み取りに失敗しました" },
       { status: 500 }

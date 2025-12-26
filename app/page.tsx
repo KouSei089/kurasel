@@ -1,13 +1,13 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
+// ↓ 相対パスでlib/supabaseを読み込み
 import { supabase } from './lib/supabase';
 
 export default function Home() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  
-  // ★追加: 支払った人の状態管理（初期値は 'me' = 自分）
   const [payer, setPayer] = useState<'me' | 'partner'>('me');
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,7 +56,7 @@ export default function Home() {
         store_name: result.store,
         amount: result.amount,
         purchase_date: result.date,
-        paid_by: payer, // ★追加: 選択された人を保存
+        paid_by: payer,
       });
 
     setSaving(false);
@@ -71,10 +71,18 @@ export default function Home() {
   };
 
   return (
-    <div className="p-8 max-w-md mx-auto min-h-screen bg-gray-50">
-      <h1 className="text-3xl font-bold mb-8 text-center text-gray-800">Scan.io</h1>
+    <div className="p-8 max-w-md mx-auto min-h-screen bg-gray-50 text-gray-800">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Scan.io</h1>
+        <Link 
+          href="/settlement" 
+          className="text-sm font-bold text-blue-600 border border-blue-600 px-3 py-1 rounded-full hover:bg-blue-50 transition"
+        >
+          💰 精算を見る
+        </Link>
+      </div>
       
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
         <label className="block mb-4 font-bold text-gray-700">レシートをスキャン</label>
         <input
           type="file"
@@ -87,9 +95,9 @@ export default function Home() {
       </div>
 
       {result && (
-        <div className="mt-6 bg-white p-6 rounded-xl shadow-lg border-2 border-blue-100">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">読み取り結果</h2>
-          <div className="space-y-3 mb-6">
+        <div className="bg-white p-6 rounded-xl shadow-lg border-2 border-blue-100 animate-in fade-in slide-in-from-bottom-4">
+          <h2 className="text-xl font-bold mb-4">読み取り結果</h2>
+          <div className="space-y-4 mb-6">
             <div>
               <label className="text-xs text-gray-500 block">店名</label>
               <input 
@@ -120,8 +128,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* ★追加: 支払った人の選択エリア */}
-            <div className="pt-4">
+            <div className="pt-2">
               <label className="text-xs text-gray-500 block mb-2">支払った人</label>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -146,7 +153,6 @@ export default function Home() {
                 </button>
               </div>
             </div>
-
           </div>
 
           <button
