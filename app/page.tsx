@@ -1,65 +1,73 @@
-import Image from "next/image";
+'use client';
+import { useState } from 'react';
 
 export default function Home() {
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  // ファイルを選択してAPIに送信する関数
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setResult(null);
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      
+      // ★ここが修正ポイント: 画像のタイプ（image/jpegなど）も一緒に送る
+      const response = await fetch('/api/analyze-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          imageBase64: base64,
+          mimeType: file.type // ← ここを追加！
+        }),
+      });
+
+      const data = await response.json();
+      if (data.error) {
+          alert("エラーが発生しました: " + data.error);
+      } else {
+          setResult(data);
+      }
+      setLoading(false);
+    };
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="p-8 max-w-md mx-auto">
+      <h1 className="text-2xl font-bold mb-4">レシート読み取りテスト</h1>
+      
+      {/* カメラ起動/ファイル選択ボタン */}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment" // スマホでカメラを優先起動
+        onChange={handleFileChange}
+        className="block w-full text-sm text-slate-500
+          file:mr-4 file:py-2 file:px-4
+          file:rounded-full file:border-0
+          file:text-sm file:font-semibold
+          file:bg-violet-50 file:text-violet-700
+          hover:file:bg-violet-100 mb-4"
+      />
+
+      {/* 読み取り中表示 */}
+      {loading && <p className="text-blue-500">解析中... AIがレシートを読んでいます</p>}
+
+      {/* 結果表示 */}
+      {result && (
+        <div className="bg-gray-100 p-4 rounded-lg">
+          <h2 className="font-bold mb-2">読み取り結果:</h2>
+          <p>📍 店名: {result.store}</p>
+          <p>📅 日付: {result.date}</p>
+          <p>💰 金額: {result.amount}円</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      )}
     </div>
   );
 }
