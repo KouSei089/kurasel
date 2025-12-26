@@ -1,162 +1,177 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { supabase } from './lib/supabase';
+
+import { useState } from 'react';
 import Link from 'next/link';
+// ↓ app/lib/supabase.ts がある前提のパスです
+import { supabase } from './lib/supabase';
 
-type Expense = {
-  id: number;
-  store_name: string;
-  amount: number;
-  purchase_date: string;
-  paid_by: 'me' | 'partner' | null;
-};
+export default function Home() {
+  const [result, setResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // 初期値は 'me'
+  const [payer, setPayer] = useState<'me' | 'partner'>('me');
 
-export default function SettlementPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<number | null>(null); // 削除処理中のID
+  // 画像が選択されたらAI解析へ送る
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  // データ取得関数（再利用できるように外に出しました）
-  const fetchExpenses = async () => {
     setLoading(true);
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+    setResult(null);
 
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*')
-      .gte('purchase_date', firstDay)
-      .lte('purchase_date', lastDay)
-      .order('purchase_date', { ascending: false });
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      
+      try {
+        const response = await fetch('/api/analyze-receipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            imageBase64: base64,
+            mimeType: file.type 
+          }),
+        });
 
-    if (error) {
-      console.error(error);
-      alert('データの取得に失敗しました');
-    } else {
-      setExpenses(data || []);
-    }
-    setLoading(false);
+        const data = await response.json();
+        if (data.error) {
+          alert("エラー: " + data.error);
+        } else {
+          setResult(data);
+        }
+      } catch (err) {
+        alert("通信エラーが発生しました");
+      } finally {
+        setLoading(false);
+      }
+    };
   };
 
-  useEffect(() => {
-    fetchExpenses();
-  }, []);
+  // Supabaseへ保存
+  const handleSave = async () => {
+    if (!result) return;
+    setSaving(true);
 
-  // ★追加: 削除機能
-  const handleDelete = async (id: number) => {
-    if (!confirm('この記録を削除してもよろしいですか？')) return;
-    
-    setDeletingId(id);
     const { error } = await supabase
       .from('expenses')
-      .delete()
-      .eq('id', id);
+      .insert({
+        store_name: result.store,
+        amount: result.amount,
+        purchase_date: result.date,
+        paid_by: payer,
+      });
+
+    setSaving(false);
 
     if (error) {
-      alert('削除に失敗しました');
       console.error(error);
+      alert('保存に失敗しました: ' + error.message);
     } else {
-      // 成功したら画面からも消す（再読み込みせずリストから除外）
-      setExpenses(expenses.filter(e => e.id !== id));
+      alert('保存しました！');
+      setResult(null); // 入力欄をクリア
+      // ファイル選択もリセットしたい場合はここでinputタグのvalueを操作する必要がありますが、
+      // 一旦シンプルに結果だけクリアします。
     }
-    setDeletingId(null);
   };
 
-  const totalMe = expenses
-    .filter(e => e.paid_by === 'me')
-    .reduce((sum, e) => sum + e.amount, 0);
-
-  const totalPartner = expenses
-    .filter(e => e.paid_by === 'partner')
-    .reduce((sum, e) => sum + e.amount, 0);
-
-  const totalAmount = totalMe + totalPartner;
-  const splitAmount = Math.round(totalAmount / 2);
-  const balance = totalMe - splitAmount; 
-
   return (
-    <div className="p-6 max-w-md mx-auto min-h-screen bg-gray-50 text-gray-800">
+    <div className="p-8 max-w-md mx-auto min-h-screen bg-gray-50 text-gray-800">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">今月の精算</h1>
-        <Link href="/" className="text-sm text-blue-600 underline">
-          ← 入力に戻る
+        <h1 className="text-3xl font-bold">Scan.io</h1>
+        {/* 精算ページへのリンク */}
+        <Link 
+          href="/settlement" 
+          className="text-sm font-bold text-blue-600 border border-blue-600 px-3 py-1 rounded-full hover:bg-blue-50 transition"
+        >
+          💰 精算を見る
         </Link>
       </div>
+      
+      {/* スキャンエリア */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+        <label className="block mb-4 font-bold text-gray-700">レシートをスキャン</label>
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        />
+        {loading && <p className="text-center text-blue-500 mt-4 animate-pulse">AIが解析中...</p>}
+      </div>
 
-      {loading ? (
-        <div className="text-center py-10 text-gray-500">読み込み中...</div>
-      ) : (
-        <>
-          <div className={`p-6 rounded-xl text-white shadow-lg mb-8 transition-colors ${
-            balance === 0 ? 'bg-gray-500' : balance > 0 ? 'bg-blue-600' : 'bg-pink-600'
-          }`}>
-            <p className="text-sm opacity-90 mb-1">精算結果</p>
-            <h2 className="text-3xl font-bold mb-2">
-              {balance === 0 ? '精算なし' : (
-                <>
-                  {balance > 0 ? 'パートナー' : 'あなた'}が
-                  <span className="text-4xl mx-2 underline">{Math.abs(balance).toLocaleString()}</span>
-                  円払う
-                </>
-              )}
-            </h2>
-            <p className="text-xs opacity-80 text-right">
-              (合計: {totalAmount.toLocaleString()}円 / 2 = {splitAmount.toLocaleString()}円ずつ)
-            </p>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-8">
-            <h3 className="font-bold mb-4 border-b pb-2 text-sm text-gray-500">支払い内訳</h3>
-            <div className="flex justify-between mb-2">
-              <span className="flex items-center"><span className="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>自分</span>
-              <span className="font-bold">{totalMe.toLocaleString()}円</span>
+      {/* 結果表示エリア */}
+      {result && (
+        <div className="bg-white p-6 rounded-xl shadow-lg border-2 border-blue-100 animate-in fade-in slide-in-from-bottom-4">
+          <h2 className="text-xl font-bold mb-4">読み取り結果</h2>
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className="text-xs text-gray-500 block">店名</label>
+              <input 
+                value={result.store} 
+                onChange={(e) => setResult({...result, store: e.target.value})}
+                className="w-full text-lg font-bold border-b border-gray-200 focus:outline-none focus:border-blue-500"
+              />
             </div>
-            <div className="flex justify-between">
-              <span className="flex items-center"><span className="w-3 h-3 bg-pink-500 rounded-full mr-2"></span>パートナー</span>
-              <span className="font-bold">{totalPartner.toLocaleString()}円</span>
+            <div>
+              <label className="text-xs text-gray-500 block">日付</label>
+              <input 
+                value={result.date} 
+                type="date"
+                onChange={(e) => setResult({...result, date: e.target.value})}
+                className="w-full text-lg border-b border-gray-200 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block">金額</label>
+              <div className="flex items-end">
+                <span className="text-lg mr-1">¥</span>
+                <input 
+                  value={result.amount} 
+                  type="number"
+                  onChange={(e) => setResult({...result, amount: Number(e.target.value)})}
+                  className="w-full text-2xl font-bold text-blue-600 border-b border-gray-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <label className="text-xs text-gray-500 block mb-2">支払った人</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setPayer('me')}
+                  className={`py-3 rounded-lg font-bold border-2 transition ${
+                    payer === 'me' 
+                      ? 'border-blue-500 bg-blue-50 text-blue-600' 
+                      : 'border-gray-200 text-gray-400'
+                  }`}
+                >
+                  自分
+                </button>
+                <button
+                  onClick={() => setPayer('partner')}
+                  className={`py-3 rounded-lg font-bold border-2 transition ${
+                    payer === 'partner' 
+                      ? 'border-pink-500 bg-pink-50 text-pink-600' 
+                      : 'border-gray-200 text-gray-400'
+                  }`}
+                >
+                  パートナー
+                </button>
+              </div>
             </div>
           </div>
 
-          <div>
-            <h3 className="font-bold mb-4 text-gray-500 text-sm">今月の履歴 ({expenses.length}件)</h3>
-            {expenses.length === 0 ? (
-              <p className="text-center text-gray-400 text-sm">データがまだありません</p>
-            ) : (
-              <ul className="space-y-3 pb-10">
-                {expenses.map((item) => (
-                  <li key={item.id} className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-center text-sm border border-gray-100 group">
-                    <div>
-                      <p className="font-bold text-gray-800">{item.store_name || '店名なし'}</p>
-                      <p className="text-gray-400 text-xs">{item.purchase_date}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <p className="font-bold text-lg">¥{item.amount.toLocaleString()}</p>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          item.paid_by === 'me' ? 'bg-blue-100 text-blue-600' : 
-                          item.paid_by === 'partner' ? 'bg-pink-100 text-pink-600' : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {item.paid_by === 'me' ? '自分' : item.paid_by === 'partner' ? 'パートナー' : '未設定'}
-                        </span>
-                      </div>
-                      
-                      {/* ★追加: 削除ボタン */}
-                      <button 
-                        onClick={() => handleDelete(item.id)}
-                        disabled={deletingId === item.id}
-                        className="text-gray-300 hover:text-red-500 p-2 transition-colors"
-                        title="削除する"
-                      >
-                        {deletingId === item.id ? '...' : '🗑️'}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full bg-gray-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-gray-800 transition disabled:bg-gray-400 shadow-md"
+          >
+            {saving ? '保存中...' : '記録する'}
+          </button>
+        </div>
       )}
     </div>
   );
