@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import Webcam from 'react-webcam'; // ★追加
 import { supabase } from './lib/supabase';
 
 export default function Home() {
@@ -9,46 +10,64 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [payer, setPayer] = useState<'me' | 'partner'>('me');
-  
-  // ★追加: カテゴリの状態（初期値は 'food' = 食費）
   const [category, setCategory] = useState<string>('food');
+  
+  // ★追加: カメラの制御用
+  const [showCamera, setShowCamera] = useState(false);
+  const webcamRef = useRef<Webcam>(null);
 
+  // 共通のAI解析処理関数
+  const analyzeImage = async (base64Data: string, mimeType: string) => {
+    setLoading(true);
+    setResult(null);
+    setShowCamera(false); // カメラが開いていたら閉じる
+
+    try {
+      const response = await fetch('/api/analyze-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          imageBase64: base64Data, // data:image/jpeg;base64,... の形式
+          mimeType: mimeType 
+        }),
+      });
+
+      const data = await response.json();
+      if (data.error) {
+        alert("エラー: " + data.error);
+      } else {
+        setResult(data);
+      }
+    } catch (err) {
+      alert("通信エラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ファイル選択時の処理 (スマホ/PCのファイルアップロード)
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setLoading(true);
-    setResult(null);
 
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = async () => {
       const base64 = reader.result as string;
-      
-      try {
-        const response = await fetch('/api/analyze-receipt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            imageBase64: base64,
-            mimeType: file.type 
-          }),
-        });
-
-        const data = await response.json();
-        if (data.error) {
-          alert("エラー: " + data.error);
-        } else {
-          setResult(data);
-        }
-      } catch (err) {
-        alert("通信エラーが発生しました");
-      } finally {
-        setLoading(false);
-      }
+      await analyzeImage(base64, file.type);
     };
   };
 
+  // ★追加: Webカメラでの撮影処理
+  const capture = useCallback(() => {
+    const imageSrc = webcamRef.current?.getScreenshot();
+    if (imageSrc) {
+      // imageSrc は "data:image/jpeg;base64,..." の形式で返ってくる
+      analyzeImage(imageSrc, 'image/jpeg');
+    }
+  }, [webcamRef]);
+
+  // 保存処理
   const handleSave = async () => {
     if (!result) return;
     setSaving(true);
@@ -60,7 +79,7 @@ export default function Home() {
         amount: result.amount,
         purchase_date: result.date,
         paid_by: payer,
-        category: category, // ★追加: カテゴリも保存
+        category: category,
       });
 
     setSaving(false);
@@ -74,7 +93,7 @@ export default function Home() {
     }
   };
 
-  // カテゴリの定義
+  // カテゴリ定義
   const categories = [
     { id: 'food', label: '食費', icon: '🥦' },
     { id: 'daily', label: '日用品', icon: '🧻' },
@@ -95,15 +114,64 @@ export default function Home() {
         </Link>
       </div>
       
+      {/* 入力エリア */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
-        <label className="block mb-4 font-bold text-gray-700">レシートをスキャン</label>
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileChange}
-          className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-        />
+        <h2 className="block mb-4 font-bold text-gray-700">レシートをスキャン</h2>
+        
+        {/* ★追加: カメラモードとファイルモードの切り替え */}
+        {!showCamera ? (
+          <div className="space-y-4">
+            {/* PC向け: カメラ起動ボタン */}
+            <button
+              onClick={() => setShowCamera(true)}
+              className="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded-lg border-2 border-blue-100 hover:bg-blue-100 transition flex items-center justify-center gap-2"
+            >
+              <span>📸</span> カメラを起動する
+            </button>
+
+            {/* スマホ向け/ファイルアップロード */}
+            <div className="relative">
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileChange}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <div className="w-full py-3 bg-gray-50 text-gray-500 font-bold rounded-lg border-2 border-dashed border-gray-300 hover:bg-gray-100 transition flex items-center justify-center gap-2">
+                <span>📂</span> ファイルを選択 / スマホカメラ
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* カメラ映像エリア */}
+            <div className="rounded-lg overflow-hidden border-2 border-blue-500 relative bg-black">
+              <Webcam
+                audio={false}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                videoConstraints={{ facingMode: "environment" }} // スマホなら背面、PCならWebcam
+                className="w-full h-auto"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCamera(false)}
+                className="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={capture}
+                className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700"
+              >
+                撮影する
+              </button>
+            </div>
+          </div>
+        )}
+
         {loading && <p className="text-center text-blue-500 mt-4 animate-pulse">AIが解析中...</p>}
       </div>
 
@@ -141,7 +209,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* ★追加: カテゴリ選択エリア */}
             <div className="pt-2">
               <label className="text-xs text-gray-500 block mb-2">カテゴリ</label>
               <div className="flex flex-wrap gap-2">
@@ -172,7 +239,7 @@ export default function Home() {
                       : 'border-gray-200 text-gray-400'
                   }`}
                 >
-                  自分
+                  A
                 </button>
                 <button
                   onClick={() => setPayer('partner')}
@@ -182,7 +249,7 @@ export default function Home() {
                       : 'border-gray-200 text-gray-400'
                   }`}
                 >
-                  パートナー
+                  B
                 </button>
               </div>
             </div>
