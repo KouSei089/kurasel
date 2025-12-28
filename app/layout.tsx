@@ -13,7 +13,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // user-scalable=no は boolean で指定
+  userScalable: false,
 };
 
 export const metadata: Metadata = {
