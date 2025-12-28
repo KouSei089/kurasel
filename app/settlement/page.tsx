@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
 import Modal from '../components/Modal';
-import EditModal from '../components/EditModal'; // ★追加
+import EditModal from '../components/EditModal';
 
 type Expense = {
   id: number;
@@ -21,7 +21,6 @@ export default function SettlementPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [myUserName, setMyUserName] = useState<string>('');
 
-  // 削除用モーダル
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
     type: 'confirm' as 'alert' | 'confirm',
@@ -31,7 +30,6 @@ export default function SettlementPage() {
   });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
 
-  // ★追加: 編集用モーダルの状態
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Expense | null>(null);
 
@@ -97,15 +95,13 @@ export default function SettlementPage() {
     }
   };
 
-  // ★追加: 編集ボタンを押した時の処理
   const handleEditClick = (item: Expense) => {
     setEditingItem(item);
     setIsEditOpen(true);
   };
 
-  // ★追加: 編集完了後の再読み込み
   const handleUpdateComplete = () => {
-    fetchExpenses(); // データを最新にする
+    fetchExpenses();
   };
 
   const totalMe = expenses.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
@@ -129,7 +125,6 @@ export default function SettlementPage() {
         confirmText="削除する"
       />
 
-      {/* ★追加: 編集モーダル */}
       <EditModal 
         isOpen={isEditOpen} 
         onClose={() => setIsEditOpen(false)} 
@@ -196,9 +191,15 @@ export default function SettlementPage() {
                           <p className="font-bold text-lg">¥{item.amount.toLocaleString()}</p>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${isMe ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>{item.paid_by}</span>
                         </div>
-                        {/* ★追加: 編集ボタン */}
-                        <button onClick={() => handleEditClick(item)} className="text-gray-300 hover:text-blue-500 p-1.5 rounded-full hover:bg-blue-50 transition">✏️</button>
-                        <button onClick={() => handleDeleteClick(item.id)} className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition">🗑️</button>
+                        
+                        {/* ★修正: isMeがtrueの時だけ編集・削除ボタンを表示 */}
+                        {isMe && (
+                          <>
+                            <button onClick={() => handleEditClick(item)} className="text-gray-300 hover:text-blue-500 p-1.5 rounded-full hover:bg-blue-50 transition">✏️</button>
+                            <button onClick={() => handleDeleteClick(item.id)} className="text-gray-300 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition">🗑️</button>
+                          </>
+                        )}
+
                       </div>
                     </li>
                   );
