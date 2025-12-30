@@ -4,8 +4,11 @@ import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Camera, Upload, Check, Loader2, ArrowRight, Receipt } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
 
-const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GOOGLE_API_KEY || '');
+// APIキーの読み込みチェック
+const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || '';
+const genAI = new GoogleGenerativeAI(apiKey);
 
 export default function Home() {
   const router = useRouter();
@@ -15,6 +18,9 @@ export default function Home() {
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  
+  // 保存用にファイルの実体を保持しておく
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
 
   const [storeName, setStoreName] = useState('');
   const [amount, setAmount] = useState('');
@@ -30,17 +36,32 @@ export default function Home() {
     }
   }, [router]);
 
+  // ファイルが選択されたら動く関数
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // 1. 保存用にファイルをステートに入れておく（ここではまだアップロードしない）
+    setFileToUpload(file);
+
+    // 2. プレビュー表示
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
+
+    // 3. AI解析を開始
     await scanReceipt(file);
   };
 
+  // ★以前動いていた、シンプルな解析ロジックに戻しました
   const scanReceipt = async (file: File) => {
+    if (!apiKey) {
+      alert('APIキーが設定されていません');
+      return;
+    }
+
     setIsScanning(true);
     try {
+      // 画像をBase64に変換
       const base64Data = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -50,7 +71,9 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
 
+      // ★モデルはこれで固定（以前動いていたもの）
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
       const prompt = `
         このレシート画像を解析して、以下の情報をJSON形式で抽出してください。
         キー名は以下のようにしてください:
@@ -58,25 +81,62 @@ export default function Home() {
         - amount (合計金額: 数値)
         - date (日付: YYYY-MM-DD形式)
         - category (カテゴリ: 'food'(食費), 'daily'(日用品), 'eatout'(外食), 'transport'(交通費), 'other'(その他) から推測)
-        JSONのみを出力してください。
+        JSONのみを出力してください。余計なマークダウンは不要です。
       `;
 
       const result = await model.generateContent([
         prompt,
         { inlineData: { data: base64Data, mimeType: file.type } },
       ]);
-      const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-      const data = JSON.parse(text);
+
+      const responseText = result.response.text();
+      console.log('AI Response:', responseText); // デバッグ用
+
+      // JSONの整形
+      const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const data = JSON.parse(cleanedText);
 
       if (data.store_name) setStoreName(data.store_name);
       if (data.amount) setAmount(String(data.amount));
       if (data.date) setPurchaseDate(data.date);
       if (data.category) setCategory(data.category);
+
     } catch (error) {
       console.error('Scan error:', error);
-      alert('読み取りに失敗しました');
+      // エラーが出ても、手動入力できればいいのでアラートは控えめに
+      // alert('解析に失敗しました（手動で入力してください）');
     } finally {
       setIsScanning(false);
+    }
+  };
+
+  // ★保存時にだけ使う画像アップロード関数
+  const uploadImageToSupabase = async (file: File) => {
+    try {
+      // 圧縮設定
+      const options = {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 1200,
+        useWebWorker: true,
+      };
+      const compressedFile = await imageCompression(file, options);
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(filePath, compressedFile);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('receipts').getPublicUrl(filePath);
+      return data.publicUrl;
+
+    } catch (error) {
+      console.error('Upload failed:', error);
+      return null;
     }
   };
 
@@ -87,20 +147,36 @@ export default function Home() {
     }
     setIsSaving(true);
     try {
+      // 1. 画像があればアップロードする（AIとは無関係）
+      let uploadedUrl = null;
+      if (fileToUpload) {
+        uploadedUrl = await uploadImageToSupabase(fileToUpload);
+      }
+
+      // 2. データを保存
       const { error } = await supabase.from('expenses').insert({
         store_name: storeName,
         amount: Number(amount),
         purchase_date: purchaseDate,
         paid_by: myUserName,
         category: category,
+        receipt_url: uploadedUrl, // 画像URLがあれば保存
       });
+
       if (error) throw error;
+      
+      // リセット処理
       setStoreName('');
       setAmount('');
       setCategory('food');
       setPreviewUrl(null);
+      setFileToUpload(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      
+      alert('記録しました！');
+
     } catch (error) {
+      console.error('Save error:', error);
       alert('保存に失敗しました');
     } finally {
       setIsSaving(false);
@@ -112,7 +188,6 @@ export default function Home() {
   return (
     <div className="p-8 max-w-md mx-auto min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 text-gray-700 relative pb-32 font-medium">
       
-      {/* ヘッダーエリア */}
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-black tracking-tight text-slate-700 drop-shadow-sm flex items-center gap-2">
           Scan.io
@@ -126,7 +201,6 @@ export default function Home() {
         </button>
       </div>
 
-      {/* スキャンカード */}
       <div className="bg-white/70 backdrop-blur-xl p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-8 relative overflow-hidden text-center group transition-all hover:shadow-[0_8px_40px_rgb(0,0,0,0.12)]">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/50 to-transparent pointer-events-none"></div>
         <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
@@ -135,7 +209,7 @@ export default function Home() {
           <div className="relative mb-4">
             <img src={previewUrl} alt="Preview" className="w-full h-48 object-cover rounded-2xl shadow-inner border border-white/60" />
             <button 
-              onClick={() => { setPreviewUrl(null); if(fileInputRef.current) fileInputRef.current.value = ''; }}
+              onClick={() => { setPreviewUrl(null); setFileToUpload(null); if(fileInputRef.current) fileInputRef.current.value = ''; }}
               className="absolute top-2 right-2 bg-slate-800/80 text-white p-2 rounded-full hover:bg-slate-900 transition-colors backdrop-blur-md"
             >
               <Check size={16} />
@@ -166,10 +240,8 @@ export default function Home() {
         )}
       </div>
 
-      {/* 入力フォーム */}
       <div className="bg-white/70 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-8 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/50 to-transparent pointer-events-none"></div>
-        
         <h2 className="text-lg font-black text-slate-700 mb-6 flex items-center gap-2 relative z-10">
           <span className="w-1.5 h-6 bg-slate-700 rounded-full"></span>
           支出の記録

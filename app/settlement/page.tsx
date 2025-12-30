@@ -6,7 +6,8 @@ import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
 import CategoryChart from '../components/CategoryChart';
 import AnalysisModal from '../components/AnalysisModal';
-import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check } from 'lucide-react';
+// ★追加: Paperclip (画像用), Sparkles (スマート精算用)
+import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles } from 'lucide-react';
 
 type Comment = {
   id: string;
@@ -25,6 +26,8 @@ type Expense = {
   category: string | null;
   reactions: { [key: string]: string } | null;
   comments: Comment[] | null;
+  // ★追加: 画像URL
+  receipt_url: string | null;
 };
 
 const REACTION_TYPES = [
@@ -50,7 +53,6 @@ const REACTION_TYPES = [
   },
 ];
 
-// ID生成用関数 (cryptoエラー回避)
 const generateId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
@@ -62,6 +64,10 @@ export default function SettlementPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [myUserName, setMyUserName] = useState<string>('');
   
+  // ★追加: スマート精算モードのON/OFF管理
+  const [useSmartSplit, setUseSmartSplit] = useState(false);
+  const SCAN_BONUS_PER_ITEM = 50; // 1回のスキャンにつき50円の手当
+
   const [activePickerId, setActivePickerId] = useState<number | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
@@ -140,6 +146,7 @@ export default function SettlementPage() {
   const handleEditClick = (item: Expense) => { setEditingItem(item); setIsEditOpen(true); };
   const handleUpdateComplete = () => { fetchExpenses(); };
 
+  // ★維持: AI家計診断機能
   const handleAnalyze = () => {
     setIsAnalyzing(true);
     setTimeout(() => {
@@ -185,7 +192,6 @@ export default function SettlementPage() {
     await supabase.from('expenses').update({ comments: newComments }).eq('id', item.id);
   };
 
-  // ★追加: コメント削除の確認モーダルを表示
   const handleDeleteCommentClick = (item: Expense, commentId: string) => {
     setModalConfig({
       isOpen: true,
@@ -196,10 +202,8 @@ export default function SettlementPage() {
     });
   };
 
-  // ★修正: 実際にコメントを削除する処理（モーダルから呼ばれる）
   const executeDeleteComment = async (item: Expense, commentId: string) => {
-    closeModal(); // モーダルを閉じる
-
+    closeModal();
     const currentComments = item.comments || [];
     const newComments = currentComments.filter(c => c.id !== commentId);
 
@@ -235,11 +239,34 @@ export default function SettlementPage() {
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
 
+  // ★追加: スマート精算ロジック
   const totalMe = expenses.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
   const totalPartner = expenses.filter(e => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
   const totalAmount = totalMe + totalPartner;
-  const splitAmount = Math.round(totalAmount / 2);
-  const balance = totalMe - splitAmount;
+  const splitAmount = Math.round(totalAmount / 2); // 単純折半額（参考用）
+  
+  // 通常の精算額（端数そのまま）
+  const basicBalance = totalMe - (totalAmount / 2); // プラスなら受け取る側
+
+  // スキャン回数の集計
+  const myScanCount = expenses.filter(e => e.paid_by === myUserName).length;
+  const partnerScanCount = expenses.filter(e => e.paid_by !== myUserName).length;
+  const scanDiff = myScanCount - partnerScanCount; // プラスなら自分が多くスキャンした
+  const scanBonus = scanDiff * SCAN_BONUS_PER_ITEM; // 受け取るべき手当（マイナスなら払う）
+
+  // スマート精算額の計算（手当加算 ＆ 100円単位丸め）
+  const smartBalanceRaw = basicBalance + scanBonus;
+
+  // 100円単位への丸め関数 (正負を考慮)
+  const roundTo100 = (num: number) => {
+      const abs = Math.abs(num);
+      const rounded = Math.floor(abs / 100) * 100;
+      return num >= 0 ? rounded : -rounded;
+  };
+
+  // 最終的な精算額（モードによって切り替え）
+  const finalBalance = useSmartSplit ? roundTo100(smartBalanceRaw) : Math.round(basicBalance);
+
   const monthLabel = `${currentMonth.getFullYear()}年${currentMonth.getMonth() + 1}月`;
 
   if (!myUserName) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
@@ -268,31 +295,73 @@ export default function SettlementPage() {
         <>
           <CategoryChart expenses={expenses} />
 
+          {/* ★維持: AI家計診断ボタン */}
           <button onClick={handleAnalyze} className="w-full mb-8 py-4 bg-white/70 backdrop-blur-xl border border-white/40 rounded-3xl shadow-sm text-slate-600 font-bold hover:bg-white hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 group">
             <span className="text-2xl group-hover:scale-110 transition-transform">🤖</span>
             <span>AI家計診断を受ける</span>
           </button>
 
-          <div className={`p-8 rounded-3xl text-white shadow-[0_10px_40px_rgb(0,0,0,0.15)] border border-white/20 mb-10 transition-all relative overflow-hidden ${balance === 0 ? 'bg-gradient-to-br from-gray-500 to-gray-600' : balance > 0 ? 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20' : 'bg-gradient-to-br from-rose-400 to-rose-500 shadow-rose-500/20'}`}>
+          {/* ★追加: スマート精算切り替えスイッチ */}
+          <div className="mb-6 bg-white/60 backdrop-blur-md p-4 rounded-3xl border border-white/40 shadow-sm flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${useSmartSplit ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>
+                      <Sparkles size={20} className={useSmartSplit ? 'fill-amber-400' : ''} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">スマート精算</p>
+                    <p className="text-[10px] text-slate-400">スキャン手当 ＆ 100円単位で調整</p>
+                  </div>
+              </div>
+              <button 
+                onClick={() => setUseSmartSplit(!useSmartSplit)}
+                className={`relative w-12 h-7 rounded-full transition-colors duration-200 ease-in-out ${useSmartSplit ? 'bg-slate-700' : 'bg-slate-300'}`}
+              >
+                  <span className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 ${useSmartSplit ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+          </div>
+
+          <div className={`p-8 rounded-3xl text-white shadow-[0_10px_40px_rgb(0,0,0,0.15)] border border-white/20 mb-6 transition-all relative overflow-hidden ${finalBalance === 0 ? 'bg-gradient-to-br from-gray-500 to-gray-600' : finalBalance > 0 ? 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20' : 'bg-gradient-to-br from-rose-400 to-rose-500 shadow-rose-500/20'}`}>
             <div className="absolute inset-0 bg-white/10 mix-blend-overlay pointer-events-none"></div>
-            <p className="text-sm font-bold opacity-90 mb-2 relative z-10">{monthLabel}の精算</p>
+            <p className="text-sm font-bold opacity-90 mb-2 relative z-10">{monthLabel}の精算{useSmartSplit && ' (調整済)'}</p>
             <h2 className="text-4xl font-black mb-4 relative z-10 drop-shadow-sm">
-              {balance === 0 ? '精算なし' : (
-                <>相手{balance > 0 ? 'から' : 'へ'}<span className="mx-3 underline underline-offset-8 decoration-white/50">{Math.abs(balance).toLocaleString()}</span>円{balance > 0 ? 'もらう' : '払う'}</>
+              {finalBalance === 0 ? '精算なし' : (
+                <>相手{finalBalance > 0 ? 'から' : 'へ'}<span className="mx-3 underline underline-offset-8 decoration-white/50">{Math.abs(finalBalance).toLocaleString()}</span>円{finalBalance > 0 ? 'もらう' : '払う'}</>
               )}
             </h2>
-            <p className="text-sm font-bold opacity-80 text-right relative z-10">(合計: {totalAmount.toLocaleString()}円 / 2 = {splitAmount.toLocaleString()}円ずつ)</p>
+
+            {/* ★追加: 手当の内訳表示 */}
+            {useSmartSplit && scanDiff !== 0 && (
+                <div className="text-xs font-bold bg-white/20 p-3 rounded-xl backdrop-blur-md mb-2 relative z-10">
+                    <p className="mb-1">🎁 スキャン感謝手当: {scanBonus > 0 ? '+' : ''}{scanBonus.toLocaleString()}円</p>
+                    <p className="opacity-80">
+                        (あなた: {myScanCount}回 vs 相手: {partnerScanCount}回 = 差{scanDiff > 0 ? '+' : ''}{scanDiff}回 × {SCAN_BONUS_PER_ITEM}円)
+                    </p>
+                </div>
+            )}
+            
+            <p className="text-sm font-bold opacity-80 text-right relative z-10">
+                {useSmartSplit 
+                    ? `(元々の差額: ${basicBalance > 0 ? '+' : ''}${Math.round(basicBalance).toLocaleString()}円)` 
+                    : `(合計: ${totalAmount.toLocaleString()}円 / 2)`}
+            </p>
           </div>
 
           <div className="bg-white/70 backdrop-blur-xl p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-10 relative overflow-hidden">
             <h3 className="font-bold mb-6 pb-3 text-gray-700 border-b border-gray-200/50 relative z-10">内訳</h3>
             <div className="flex justify-between mb-4 relative z-10">
               <span className="flex items-center text-gray-700 font-bold"><span className="w-4 h-4 bg-gradient-to-br from-slate-400 to-slate-600 rounded-full mr-4 shadow-sm"></span>あなた ({myUserName})</span>
-              <span className="font-black text-xl">{totalMe.toLocaleString()}円</span>
+              <div className="text-right">
+                  <span className="font-black text-xl block">{totalMe.toLocaleString()}円</span>
+                  {/* ★追加: スキャン回数表示 */}
+                  <span className="text-xs text-gray-400 font-bold">スキャン: {myScanCount}回</span>
+              </div>
             </div>
             <div className="flex justify-between pt-4 relative z-10">
               <span className="flex items-center text-gray-700 font-bold"><span className="w-4 h-4 bg-gradient-to-br from-rose-400 to-rose-500 rounded-full mr-4 shadow-sm"></span>相手</span>
-              <span className="font-black text-xl text-rose-600">{totalPartner.toLocaleString()}円</span>
+              <div className="text-right">
+                <span className="font-black text-xl text-rose-600 block">{totalPartner.toLocaleString()}円</span>
+                <span className="text-xs text-rose-300 font-bold">スキャン: {partnerScanCount}回</span>
+              </div>
             </div>
           </div>
 
@@ -315,7 +384,15 @@ export default function SettlementPage() {
                         <div className="flex items-center gap-4">
                           <span className="text-3xl bg-gray-100/80 p-3 rounded-2xl shadow-inner">{getCategoryIcon(item.category)}</span>
                           <div>
-                            <p className="font-black text-gray-800 text-lg mb-0.5">{item.store_name || '店名なし'}</p>
+                            <div className="flex items-center gap-2">
+                                <p className="font-black text-gray-800 text-lg mb-0.5">{item.store_name || '店名なし'}</p>
+                                {/* ★追加: 画像URLがある場合、クリップアイコンを表示 */}
+                                {item.receipt_url && (
+                                    <a href={item.receipt_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 p-1 bg-blue-50 rounded-full transition-colors" onClick={(e) => e.stopPropagation()}>
+                                        <Paperclip size={14} />
+                                    </a>
+                                )}
+                            </div>
                             <div className="flex items-center gap-2">
                               <p className="text-gray-500 text-xs font-bold">{formatDate(item.purchase_date)}</p>
                               {item.created_at && <p className="text-gray-300 text-[10px]">(登録: {formatDate(item.created_at)})</p>}
@@ -425,7 +502,6 @@ export default function SettlementPage() {
                                           {comment.text}
                                           {isMyComment && (
                                             <div className="absolute -left-16 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                              {/* ★修正: 専用モーダルを呼び出すように変更 */}
                                               <button onClick={() => handleDeleteCommentClick(item, comment.id)} className="p-1.5 bg-rose-100 text-rose-500 rounded-full hover:bg-rose-200"><Trash2 size={12} /></button>
                                               <button onClick={() => handleStartEditComment(comment)} className="p-1.5 bg-blue-100 text-blue-500 rounded-full hover:bg-blue-200"><Pencil size={12} /></button>
                                             </div>
