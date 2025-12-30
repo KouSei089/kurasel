@@ -116,11 +116,51 @@ export default function SettlementPage() {
   const handleDeleteClick = (id: number) => {
     setModalConfig({ isOpen: true, type: 'confirm', title: '記録の削除', message: 'この記録を削除してもよろしいですか？', onConfirm: () => handleDelete(id), });
   };
+
+  // ★修正: 画像も一緒に削除するロジックに変更
   const handleDelete = async (id: number) => {
     closeModal();
-    const { error } = await supabase.from('expenses').delete().eq('id', id);
-    if (!error) setExpenses(expenses.filter(e => e.id !== id));
-    else alert('削除に失敗しました');
+    
+    try {
+      // 1. まず削除対象のデータを取得（画像URLを知るため）
+      const { data: targetItem, error: fetchError } = await supabase
+        .from('expenses')
+        .select('receipt_url')
+        .eq('id', id)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // 2. 画像がある場合、Storageから削除
+      if (targetItem?.receipt_url) {
+        // URLの末尾（ファイル名）を取得
+        const fileName = targetItem.receipt_url.split('/').pop();
+        
+        if (fileName) {
+          const { error: storageError } = await supabase.storage
+            .from('receipts')
+            .remove([fileName]);
+          
+          if (storageError) {
+            console.error('画像削除エラー(DB削除は続行):', storageError);
+          } else {
+            console.log('画像削除成功:', fileName);
+          }
+        }
+      }
+
+      // 3. データベースから削除
+      const { error: deleteError } = await supabase.from('expenses').delete().eq('id', id);
+      
+      if (deleteError) throw deleteError;
+
+      // 4. UI更新
+      setExpenses(expenses.filter(e => e.id !== id));
+      
+    } catch (error) {
+      console.error('削除処理エラー:', error);
+      alert('削除に失敗しました');
+    }
   };
 
   const handleEditClick = (item: Expense) => { setEditingItem(item); setIsEditOpen(true); };
@@ -196,7 +236,6 @@ export default function SettlementPage() {
   if (!myUserName) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
 
   return (
-    // ★レスポンシブ調整: px-4 py-8 でスマホの左右余白を確保しつつ広すぎないように
     <div className="px-4 py-8 sm:p-8 max-w-md mx-auto min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 text-gray-700 relative pb-32 font-medium">
       <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText="削除する" />
       <EditModal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} expense={editingItem} onUpdate={handleUpdateComplete} />
@@ -384,7 +423,6 @@ export default function SettlementPage() {
                           )}
                         </div>
 
-                        {/* コメントエリア (省略なし) */}
                         {isCommentOpen && (
                           <div className="comment-area mt-4 pt-4 border-t border-slate-100 animate-in slide-in-from-top-2 fade-in duration-200">
                             {comments.length > 0 ? (

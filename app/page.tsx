@@ -13,7 +13,6 @@ const genAI = new GoogleGenerativeAI(apiKey);
 export default function Home() {
   const router = useRouter();
   
-  // ★修正1: input用のrefを2つに分ける
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -28,8 +27,14 @@ export default function Home() {
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState('food');
 
+  // ★修正: confirmText (ボタンの文字) をステートに追加
   const [modalConfig, setModalConfig] = useState({
-    isOpen: false, type: 'confirm' as 'alert' | 'confirm', title: '', message: '', onConfirm: () => {},
+    isOpen: false,
+    type: 'confirm' as 'alert' | 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'OK', // デフォルト値
+    onConfirm: () => {},
   });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
 
@@ -41,7 +46,12 @@ export default function Home() {
 
   const handleLogoutClick = () => {
     setModalConfig({
-      isOpen: true, type: 'confirm', title: 'ログアウト', message: '本当にログアウトしますか？', onConfirm: executeLogout,
+      isOpen: true,
+      type: 'confirm',
+      title: 'ログアウト',
+      message: '本当にログアウトしますか？',
+      confirmText: 'ログアウト', // ボタンの文字を指定
+      onConfirm: executeLogout,
     });
   };
 
@@ -54,7 +64,6 @@ export default function Home() {
   const handleClearImage = () => {
     setPreviewUrl(null);
     setFileToUpload(null);
-    // inputの中身もクリアしておく
     if(cameraInputRef.current) cameraInputRef.current.value = '';
     if(galleryInputRef.current) galleryInputRef.current.value = '';
   };
@@ -106,6 +115,7 @@ export default function Home() {
 
   const scanReceipt = async (file: File) => {
     if (!apiKey) {
+      // ここは開発者向けエラーなのでalertのままでOK
       alert('APIキーが設定されていません');
       setIsScanning(false);
       return;
@@ -194,6 +204,8 @@ export default function Home() {
 
   const handleSave = async () => {
     if (!storeName || !amount || !purchaseDate) {
+      // バリデーションエラーもモーダルで見せたい場合はここを変えてもOK
+      // 今回はシンプルにalertのままにしておきます
       alert('必須項目を入力してください');
       return;
     }
@@ -221,11 +233,18 @@ export default function Home() {
       setPreviewUrl(null);
       setFileToUpload(null);
       
-      // クリア処理も両方のrefに対応
       if(cameraInputRef.current) cameraInputRef.current.value = '';
       if(galleryInputRef.current) galleryInputRef.current.value = '';
       
-      alert('記録しました！');
+      // ★修正: 成功時のモーダル表示
+      setModalConfig({
+        isOpen: true,
+        type: 'alert', // alertタイプならキャンセルボタンが出ない（Modalの実装による）
+        title: '登録完了 ✨',
+        message: '支出を記録しました！',
+        confirmText: 'OK',
+        onConfirm: () => closeModal(),
+      });
 
     } catch (error) {
       console.error('Save error:', error);
@@ -239,7 +258,17 @@ export default function Home() {
 
   return (
     <div className="px-4 py-6 sm:p-8 max-w-md mx-auto min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 text-gray-700 relative pb-32 font-medium">
-      <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText="ログアウト" />
+      
+      {/* ★修正: confirmText を渡すように変更 */}
+      <Modal 
+        isOpen={modalConfig.isOpen} 
+        onClose={closeModal} 
+        type={modalConfig.type} 
+        title={modalConfig.title} 
+        message={modalConfig.message} 
+        onConfirm={modalConfig.onConfirm} 
+        confirmText={modalConfig.confirmText} 
+      />
 
       <div className="flex justify-between items-center mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-700 drop-shadow-sm flex items-center gap-2">Scan.io</h1>
@@ -252,8 +281,6 @@ export default function Home() {
       <div className="bg-white/70 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-6 sm:mb-8 relative overflow-hidden text-center group transition-all hover:shadow-[0_8px_40px_rgb(0,0,0,0.12)]">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/50 to-transparent pointer-events-none"></div>
         
-        {/* ★修正2: inputを2つ用意する */}
-        {/* カメラ起動用 (capture="environment" あり) */}
         <input 
           type="file" 
           accept="image/*" 
@@ -262,7 +289,6 @@ export default function Home() {
           onChange={handleFileChange} 
           className="hidden" 
         />
-        {/* アルバム選択用 (captureなし) */}
         <input 
           type="file" 
           accept="image/*" 
@@ -287,7 +313,6 @@ export default function Home() {
             <div className="p-3 sm:p-4 bg-white rounded-full shadow-sm"><Receipt size={28} className="text-slate-400 sm:w-8 sm:h-8" /></div>
             <p className="text-slate-500 text-xs sm:text-sm font-bold">レシートを撮影して自動入力</p>
             <div className="flex gap-2 sm:gap-3 mt-2">
-               {/* ★修正3: ボタンによってクリックするinputを変える */}
                <button onClick={() => cameraInputRef.current?.click()} className="px-4 py-2 sm:px-5 sm:py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2 hover:bg-slate-50 transition-all"><Camera size={14} className="text-blue-500 sm:w-4 sm:h-4" /> カメラ</button>
                <button onClick={() => galleryInputRef.current?.click()} className="px-4 py-2 sm:px-5 sm:py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2 hover:bg-slate-50 transition-all"><Upload size={14} className="text-slate-500 sm:w-4 sm:h-4" /> 選択</button>
             </div>
