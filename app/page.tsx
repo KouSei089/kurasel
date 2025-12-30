@@ -3,10 +3,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Camera, Upload, Check, Loader2, ArrowRight, Receipt } from 'lucide-react';
+import { Camera, Upload, Check, Loader2, ArrowRight, Receipt, LogOut, User } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
+import Modal from './components/Modal';
 
-// APIキーの読み込みチェック
+// APIキーの読み込み
 const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || '';
 const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -14,19 +15,32 @@ export default function Home() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ステート管理
   const [myUserName, setMyUserName] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   
-  // 保存用にファイルの実体を保持しておく
+  // 保存用にファイルの実体を保持
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
 
+  // 入力フォーム
   const [storeName, setStoreName] = useState('');
   const [amount, setAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState('food');
 
+  // モーダル制御
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm' as 'alert' | 'confirm',
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+  const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
+
+  // 初回ロード時のログインチェック
   useEffect(() => {
     const storedName = localStorage.getItem('scan_io_user_name');
     if (!storedName) {
@@ -36,23 +50,36 @@ export default function Home() {
     }
   }, [router]);
 
-  // ファイルが選択されたら動く関数
+  // ログアウトボタンクリック時の処理（モーダルを開く）
+  const handleLogoutClick = () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'ログアウト',
+      message: '本当にログアウトしますか？',
+      onConfirm: executeLogout,
+    });
+  };
+
+  // 実際のログアウト処理
+  const executeLogout = () => {
+    closeModal();
+    localStorage.removeItem('scan_io_user_name');
+    router.push('/login');
+  };
+
+  // ファイル選択時の処理
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 1. 保存用にファイルをステートに入れておく（ここではまだアップロードしない）
     setFileToUpload(file);
-
-    // 2. プレビュー表示
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
-
-    // 3. AI解析を開始
     await scanReceipt(file);
   };
 
-  // ★以前動いていた、シンプルな解析ロジックに戻しました
+  // AIによるレシート解析
   const scanReceipt = async (file: File) => {
     if (!apiKey) {
       alert('APIキーが設定されていません');
@@ -61,7 +88,6 @@ export default function Home() {
 
     setIsScanning(true);
     try {
-      // 画像をBase64に変換
       const base64Data = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -71,7 +97,7 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
 
-      // ★モデルはこれで固定（以前動いていたもの）
+      // 本番環境でも安定して動作するモデルを指定
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       
       const prompt = `
@@ -90,9 +116,6 @@ export default function Home() {
       ]);
 
       const responseText = result.response.text();
-      console.log('AI Response:', responseText); // デバッグ用
-
-      // JSONの整形
       const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
       const data = JSON.parse(cleanedText);
 
@@ -103,17 +126,15 @@ export default function Home() {
 
     } catch (error) {
       console.error('Scan error:', error);
-      // エラーが出ても、手動入力できればいいのでアラートは控えめに
-      // alert('解析に失敗しました（手動で入力してください）');
+      alert('解析に失敗しました。手動で入力してください。');
     } finally {
       setIsScanning(false);
     }
   };
 
-  // ★保存時にだけ使う画像アップロード関数
+  // 画像アップロード処理（Supabase）
   const uploadImageToSupabase = async (file: File) => {
     try {
-      // 圧縮設定
       const options = {
         maxSizeMB: 0.5,
         maxWidthOrHeight: 1200,
@@ -140,6 +161,7 @@ export default function Home() {
     }
   };
 
+  // 保存ボタンクリック時の処理
   const handleSave = async () => {
     if (!storeName || !amount || !purchaseDate) {
       alert('必須項目を入力してください');
@@ -147,25 +169,23 @@ export default function Home() {
     }
     setIsSaving(true);
     try {
-      // 1. 画像があればアップロードする（AIとは無関係）
       let uploadedUrl = null;
       if (fileToUpload) {
         uploadedUrl = await uploadImageToSupabase(fileToUpload);
       }
 
-      // 2. データを保存
       const { error } = await supabase.from('expenses').insert({
         store_name: storeName,
         amount: Number(amount),
         purchase_date: purchaseDate,
         paid_by: myUserName,
         category: category,
-        receipt_url: uploadedUrl, // 画像URLがあれば保存
+        receipt_url: uploadedUrl,
       });
 
       if (error) throw error;
       
-      // リセット処理
+      // フォームのリセット
       setStoreName('');
       setAmount('');
       setCategory('food');
@@ -188,6 +208,17 @@ export default function Home() {
   return (
     <div className="p-8 max-w-md mx-auto min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 text-gray-700 relative pb-32 font-medium">
       
+      {/* 共通モーダル */}
+      <Modal 
+        isOpen={modalConfig.isOpen} 
+        onClose={closeModal} 
+        type={modalConfig.type} 
+        title={modalConfig.title} 
+        message={modalConfig.message} 
+        onConfirm={modalConfig.onConfirm} 
+        confirmText="ログアウト" 
+      />
+
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-black tracking-tight text-slate-700 drop-shadow-sm flex items-center gap-2">
           Scan.io
@@ -318,9 +349,27 @@ export default function Home() {
         </button>
       </div>
 
-      <p className="text-center text-xs font-bold text-slate-400/80">
-        Login as: {myUserName}
-      </p>
+      <div className="mt-8 flex flex-col items-center gap-3">
+        {/* ユーザーバッジ */}
+        <div className="flex items-center gap-3 pl-2 pr-4 py-1.5 bg-white/60 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
+          <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center shadow-inner">
+            <User size={16} className="text-slate-500" />
+          </div>
+          <div className="flex flex-col items-start leading-none">
+            <span className="text-[10px] text-slate-400 font-bold mb-0.5">ログイン中</span>
+            <span className="text-sm font-black text-slate-600">{myUserName}</span>
+          </div>
+        </div>
+
+        {/* ログアウトボタン */}
+        <button 
+          onClick={handleLogoutClick}
+          className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1 px-3 py-2 rounded-lg hover:bg-rose-50"
+        >
+          <LogOut size={12} />
+          ログアウト
+        </button>
+      </div>
     </div>
   );
 }
