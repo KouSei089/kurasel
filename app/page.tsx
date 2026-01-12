@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-// ★修正: ScanLineなどの不要なアイコンは削除
 import { Camera, Upload, Check, Loader2, ArrowRight, Receipt, LogOut, User, X } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import Modal from './components/Modal';
@@ -18,6 +17,8 @@ export default function Home() {
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [myUserName, setMyUserName] = useState('');
+  const [isDemoMode, setIsDemoMode] = useState(false); // ★追加: デモモード判定
+
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -38,10 +39,22 @@ export default function Home() {
   });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
 
+  // ★変更: ログイン判定ロジック
   useEffect(() => {
+    const mode = localStorage.getItem('kurasel_mode');
     const storedName = localStorage.getItem('scan_io_user_name');
-    if (!storedName) router.push('/login');
-    else setMyUserName(storedName);
+
+    if (mode === 'demo') {
+      setIsDemoMode(true);
+      setMyUserName('あなた'); // DEMO時は名前固定
+    } else {
+      setIsDemoMode(false);
+      if (!storedName) {
+        router.push('/login');
+      } else {
+        setMyUserName(storedName);
+      }
+    }
   }, [router]);
 
   const handleLogoutClick = () => {
@@ -58,6 +71,7 @@ export default function Home() {
   const executeLogout = () => {
     closeModal();
     localStorage.removeItem('scan_io_user_name');
+    localStorage.removeItem('kurasel_mode'); // モード設定も削除
     router.push('/login');
   };
 
@@ -77,22 +91,13 @@ export default function Home() {
     try {
       let processFile = file;
 
+      // HEIC変換処理
       if (file.name.toLowerCase().endsWith('.heic') || file.type === 'image/heic') {
         try {
           const heic2any = (await import('heic2any')).default;
-          const convertedBlob = await heic2any({
-            blob: file,
-            toType: 'image/jpeg',
-            quality: 0.7 
-          });
-          
+          const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.7 });
           const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-          
-          processFile = new File(
-            [blob], 
-            file.name.replace(/\.heic$/i, '.jpg'), 
-            { type: 'image/jpeg' }
-          );
+          processFile = new File([blob], file.name.replace(/\.heic$/i, '.jpg'), { type: 'image/jpeg' });
         } catch (e) {
           console.error('HEIC変換エラー:', e);
           alert('画像の形式変換に失敗しました。');
@@ -165,36 +170,15 @@ export default function Home() {
 
   const uploadImageToSupabase = async (file: File) => {
     try {
-      console.log('1. 処理開始:', file.size / 1024, 'KB');
-      
-      const options = {
-        maxSizeMB: 0.1,        
-        maxWidthOrHeight: 1024,
-        useWebWorker: true,
-        fileType: 'image/jpeg',
-        initialQuality: 0.6,   
-      };
-      
+      const options = { maxSizeMB: 0.1, maxWidthOrHeight: 1024, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.6 };
       const compressedFile = await imageCompression(file, options);
-      console.log('2. 圧縮完了:', compressedFile.size / 1024, 'KB');
-
       const fileExt = 'jpg';
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${fileName}`;
-
-      const { data, error: uploadError } = await supabase.storage
-        .from('receipts')
-        .upload(filePath, compressedFile, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: 'image/jpeg',
-        });
-
+      const { data, error: uploadError } = await supabase.storage.from('receipts').upload(filePath, compressedFile, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
       if (uploadError) throw uploadError;
-
       const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(filePath);
       return urlData.publicUrl;
-
     } catch (error: any) {
       console.error('Upload failed:', error);
       return null;
@@ -207,7 +191,35 @@ export default function Home() {
       return;
     }
     setIsSaving(true);
+
     try {
+      // ★追加: DEMOモードなら保存処理をスキップ
+      if (isDemoMode) {
+        setTimeout(() => {
+          setIsSaving(false);
+          // フォームリセット
+          setStoreName('');
+          setAmount('');
+          setCategory('food');
+          setPreviewUrl(null);
+          setFileToUpload(null);
+          if(cameraInputRef.current) cameraInputRef.current.value = '';
+          if(galleryInputRef.current) galleryInputRef.current.value = '';
+
+          // DEMO用成功メッセージ
+          setModalConfig({
+            isOpen: true,
+            type: 'alert', 
+            title: 'DEMO登録完了 ✨',
+            message: 'デモモードのためデータは保存されませんが、\n正常に動作することを確認しました！',
+            confirmText: 'OK',
+            onConfirm: () => closeModal(),
+          });
+        }, 1000); // 少し待って保存した感を出す
+        return;
+      }
+
+      // --- 本番用の保存処理 ---
       let uploadedUrl = null;
       if (fileToUpload) {
         uploadedUrl = await uploadImageToSupabase(fileToUpload);
@@ -246,15 +258,23 @@ export default function Home() {
       console.error('Save error:', error);
       alert('保存に失敗しました');
     } finally {
-      setIsSaving(false);
+      // DEMOモードの場合はsetTimeout内でfalseにするので、ここは本番時のみ有効
+      if (!isDemoMode) setIsSaving(false);
     }
   };
 
-  if (!myUserName) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
+  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
 
   return (
-    <div className="px-4 py-6 sm:p-8 max-w-md mx-auto min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 text-gray-700 relative pb-32 font-medium">
+    <div className={`px-4 py-6 sm:p-8 max-w-md mx-auto min-h-screen text-gray-700 relative pb-32 font-medium transition-colors duration-500 ${isDemoMode ? 'bg-orange-50/50' : 'bg-gradient-to-br from-slate-50 to-gray-100'}`}>
       
+      {/* ★追加: DEMOモード時の帯表示 */}
+      {isDemoMode && (
+        <div className="fixed top-0 left-0 w-full bg-orange-400 text-white text-xs font-bold text-center py-1 z-50 shadow-md">
+          🚧 DEMO MODE - データは保存されません
+        </div>
+      )}
+
       <Modal 
         isOpen={modalConfig.isOpen} 
         onClose={closeModal} 
@@ -265,10 +285,10 @@ export default function Home() {
         confirmText={modalConfig.confirmText} 
       />
 
-      <div className="flex justify-between items-center mb-6 sm:mb-8">
-        {/* ▼ 修正: アイコンを削除し、テキストのみでシンプルに */}
-        <h1 className="text-xl sm:text-2xl font-black text-slate-700 tracking-tight">
+      <div className="flex justify-between items-center mb-6 sm:mb-8 mt-4">
+        <h1 className="text-xl sm:text-2xl font-black text-slate-700 tracking-tight flex items-center gap-2">
           レシートスキャン
+          {isDemoMode && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full border border-orange-200">DEMO</span>}
         </h1>
 
         <button onClick={() => router.push('/settlement')} className="text-xs sm:text-sm font-bold text-slate-600 bg-white/80 backdrop-blur-md border border-white/40 px-4 py-2 sm:px-5 sm:py-2.5 rounded-full hover:bg-white hover:-translate-y-0.5 transition-all shadow-sm flex items-center gap-2 group">

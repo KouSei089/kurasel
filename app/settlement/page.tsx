@@ -6,91 +6,64 @@ import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
 import CategoryChart from '../components/CategoryChart';
 import AnalysisModal from '../components/AnalysisModal';
-import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock } from 'lucide-react';
+import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock, Lock, ShieldCheck } from 'lucide-react';
+import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
 
-type Comment = {
-  id: string;
-  user: string;
-  text: string;
-  timestamp: string;
-};
-
-type Expense = {
-  id: number;
-  store_name: string;
-  amount: number;
-  purchase_date: string;
-  created_at: string;
-  paid_by: string;
-  category: string | null;
-  reactions: { [key: string]: string } | null;
-  comments: Comment[] | null;
-  receipt_url: string | null;
-};
-
-type MonthlyStatus = {
-  is_paid: boolean;
-  is_received: boolean;
-};
-
+// ... (型定義や定数はそのまま) ...
+type Comment = { id: string; user: string; text: string; timestamp: string; };
+type Expense = { id: number; store_name: string; amount: number; purchase_date: string; created_at: string; paid_by: string; category: string | null; reactions: { [key: string]: string } | null; comments: Comment[] | null; receipt_url: string | null; };
+type MonthlyStatus = { is_paid: boolean; is_received: boolean; };
 const REACTION_TYPES = [
   { id: 'heart', src: 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Smilies/Red%20Heart.png', bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-600' },
   { id: 'good', src: 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Thumbs%20Up.png', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600' },
   { id: 'party', src: 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Activities/Party%20Popper.png', bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600' },
   { id: 'please', src: 'https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/master/Emojis/Hand%20gestures/Folded%20Hands.png', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-600' },
 ];
-
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
-
-const formatDateTime = (isoString: string) => {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-};
+const formatDateTime = (isoString: string) => { if (!isoString) return ''; const d = new Date(isoString); return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`; };
 
 export default function SettlementPage() {
   const router = useRouter();
+  // ▼変更: 初期値はfalseにし、useEffectでlocalStorageから判定
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [myUserName, setMyUserName] = useState<string>('');
-  
-  // その月の支払いステータス
   const [monthlyStatus, setMonthlyStatus] = useState<MonthlyStatus>({ is_paid: false, is_received: false });
-  
   const [useSmartSplit, setUseSmartSplit] = useState(false);
   const SCAN_BONUS_PER_ITEM = 50; 
-
   const [activePickerId, setActivePickerId] = useState<number | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
-
-  // confirmText を追加してボタンの文言を変えられるように変更
-  const [modalConfig, setModalConfig] = useState({
-    isOpen: false,
-    type: 'confirm' as 'alert' | 'confirm',
-    title: '',
-    message: '',
-    confirmText: 'OK', 
-    onConfirm: () => {},
-  });
+  const [modalConfig, setModalConfig] = useState({ isOpen: false, type: 'confirm' as 'alert' | 'confirm', title: '', message: '', confirmText: 'OK', onConfirm: () => {}, });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
-  
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Expense | null>(null);
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
   const [analysisResult, setAnalysisResult] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-
   const [visibleCount, setVisibleCount] = useState(10);
   const [showDetails, setShowDetails] = useState(false);
 
+  // ▼変更: 起動時にモードとユーザーを判定
   useEffect(() => {
+    const mode = localStorage.getItem('kurasel_mode');
     const storedName = localStorage.getItem('scan_io_user_name');
-    if (!storedName) router.push('/login');
-    else setMyUserName(storedName);
+
+    if (mode === 'demo') {
+      setIsDemoMode(true);
+      setMyUserName('あなた'); // デモの場合は強制的に「あなた」
+    } else {
+      setIsDemoMode(false);
+      if (!storedName) {
+        router.push('/login');
+      } else {
+        setMyUserName(storedName);
+      }
+    }
   }, [router]);
 
   useEffect(() => {
@@ -110,218 +83,78 @@ export default function SettlementPage() {
 
   const fetchExpenses = async () => {
     setLoading(true);
+
+    if (isDemoMode) {
+      setTimeout(() => {
+        setExpenses(DEMO_EXPENSES as any);
+        setMonthlyStatus(DEMO_STATUS);
+        setLoading(false);
+      }, 500);
+      return;
+    }
+
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    
-    // 月のキー (YYYY-MM)
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-
     const toYMD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const firstDayStr = toYMD(new Date(year, month, 1));
     const lastDayStr = toYMD(new Date(year, month + 1, 0));
     
-    // 家計簿データの取得
-    const { data: expensesData, error: expensesError } = await supabase.from('expenses')
-      .select('*')
-      .gte('purchase_date', firstDayStr)
-      .lte('purchase_date', lastDayStr)
-      .order('created_at', { ascending: false });
-    
-    if (expensesError) console.error(expensesError);
-    else setExpenses(expensesData || []);
+    const { data: expensesData, error: expensesError } = await supabase.from('expenses').select('*').gte('purchase_date', firstDayStr).lte('purchase_date', lastDayStr).order('created_at', { ascending: false });
+    if (expensesError) console.error(expensesError); else setExpenses(expensesData || []);
 
-    // 月のステータス取得
-    const { data: statusData, error: statusError } = await supabase
-      .from('monthly_settlements')
-      .select('*')
-      .eq('month', monthKey)
-      .single();
-    
-    if (statusData) {
-      setMonthlyStatus({ is_paid: statusData.is_paid, is_received: statusData.is_received });
-    } else {
-      setMonthlyStatus({ is_paid: false, is_received: false });
-    }
-
+    const { data: statusData } = await supabase.from('monthly_settlements').select('*').eq('month', monthKey).single();
+    if (statusData) { setMonthlyStatus({ is_paid: statusData.is_paid, is_received: statusData.is_received }); } else { setMonthlyStatus({ is_paid: false, is_received: false }); }
     setLoading(false);
   };
 
-  useEffect(() => { fetchExpenses(); }, [currentMonth]);
+  useEffect(() => { 
+    // isDemoModeの判定が終わってからfetchするように制御（初期ロード時のちらつき防止）
+    if (myUserName) fetchExpenses(); 
+  }, [currentMonth, isDemoMode, myUserName]);
 
-  // ▼ ステータス変更時の確認モーダル表示
+  const checkDemo = () => { if (isDemoMode) { alert('⚠️ DEMOモード中はこの操作はできません'); return true; } return false; };
+
   const handleStatusClick = (type: 'paid' | 'received') => {
+    if (checkDemo()) return;
     const isPaidAction = type === 'paid';
-    
-    // 現在の状態から「次にどうなるか」を判定
-    // paidの場合: trueならfalseにする(取り消し)、falseならtrueにする(完了)
     const willBeActive = isPaidAction ? !monthlyStatus.is_paid : !monthlyStatus.is_received;
-
-    let title = '';
-    let message = '';
-    let confirmText = '';
-
+    let title = '', message = '', confirmText = '';
     if (isPaidAction) {
-      if (willBeActive) {
-        title = '支払い完了の確認';
-        message = '相手への支払いは完了しましたか？\nステータスを「支払い済み」に変更します。';
-        confirmText = '完了とする';
-      } else {
-        title = '支払いの取り消し';
-        message = '「支払い済み」ステータスを取り消して元に戻しますか？';
-        confirmText = '取り消す';
-      }
+      if (willBeActive) { title = '支払い完了の確認'; message = '相手への支払いは完了しましたか？\nステータスを「支払い済み」に変更します。'; confirmText = '完了とする'; } else { title = '支払いの取り消し'; message = '「支払い済み」ステータスを取り消して元に戻しますか？'; confirmText = '取り消す'; }
     } else {
-      // 受け取り側
-      if (willBeActive) {
-        title = '精算完了の確認';
-        message = '相手からの受け取りを確認しましたか？\nこれを押すと今月の精算は完了となります。';
-        confirmText = '精算完了';
-      } else {
-        title = '受け取りの取り消し';
-        message = '「精算完了」ステータスを取り消して元に戻しますか？';
-        confirmText = '取り消す';
-      }
+      if (willBeActive) { title = '精算完了の確認'; message = '相手からの受け取りを確認しましたか？\nこれを押すと今月の精算は完了となります。'; confirmText = '精算完了'; } else { title = '受け取りの取り消し'; message = '「精算完了」ステータスを取り消して元に戻しますか？'; confirmText = '取り消す'; }
     }
-
-    setModalConfig({
-      isOpen: true,
-      type: 'confirm',
-      title,
-      message,
-      confirmText,
-      onConfirm: () => executeToggleStatus(type),
-    });
+    setModalConfig({ isOpen: true, type: 'confirm', title, message, confirmText, onConfirm: () => executeToggleStatus(type), });
   };
 
-  // ▼ 実際のDB更新処理
   const executeToggleStatus = async (type: 'paid' | 'received') => {
     closeModal();
-
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-    
     const newStatus = { ...monthlyStatus };
     if (type === 'paid') newStatus.is_paid = !newStatus.is_paid;
     if (type === 'received') newStatus.is_received = !newStatus.is_received;
-
-    // UI更新
     setMonthlyStatus(newStatus);
-
-    // DB更新
-    const { error } = await supabase.from('monthly_settlements').upsert({
-      month: monthKey,
-      is_paid: newStatus.is_paid,
-      is_received: newStatus.is_received,
-      updated_at: new Date().toISOString()
-    });
-
-    if (error) {
-      console.error('Status update failed:', error);
-      setMonthlyStatus(monthlyStatus); // 失敗したら戻す
-      alert('ステータスの更新に失敗しました');
-    }
+    const { error } = await supabase.from('monthly_settlements').upsert({ month: monthKey, is_paid: newStatus.is_paid, is_received: newStatus.is_received, updated_at: new Date().toISOString() });
+    if (error) { console.error(error); setMonthlyStatus(monthlyStatus); alert('更新失敗'); }
   };
 
-  const changeMonth = (amount: number) => {
-    const newDate = new Date(currentMonth);
-    newDate.setMonth(newDate.getMonth() + amount);
-    setCurrentMonth(newDate);
-    setVisibleCount(10);
-  };
-
-  const handleDeleteClick = (id: number) => {
-    setModalConfig({ 
-      isOpen: true, 
-      type: 'confirm', 
-      title: '記録の削除', 
-      message: 'この記録を削除してもよろしいですか？', 
-      confirmText: '削除する', // 削除時は「削除する」
-      onConfirm: () => handleDelete(id), 
-    });
-  };
-
-  const handleDelete = async (id: number) => {
-    closeModal();
-    try {
-      const { data: targetItem, error: fetchError } = await supabase.from('expenses').select('receipt_url').eq('id', id).single();
-      if (fetchError) throw fetchError;
-      if (targetItem?.receipt_url) {
-        const fileName = targetItem.receipt_url.split('/').pop();
-        if (fileName) await supabase.storage.from('receipts').remove([fileName]);
-      }
-      const { error: deleteError } = await supabase.from('expenses').delete().eq('id', id);
-      if (deleteError) throw deleteError;
-      setExpenses(expenses.filter(e => e.id !== id));
-    } catch (error) {
-      console.error('削除処理エラー:', error);
-      alert('削除に失敗しました');
-    }
-  };
-
-  const handleEditClick = (item: Expense) => { setEditingItem(item); setIsEditOpen(true); };
+  const changeMonth = (amount: number) => { const newDate = new Date(currentMonth); newDate.setMonth(newDate.getMonth() + amount); setCurrentMonth(newDate); setVisibleCount(10); };
+  const handleDeleteClick = (id: number) => { if (checkDemo()) return; setModalConfig({ isOpen: true, type: 'confirm', title: '記録の削除', message: 'この記録を削除してもよろしいですか？', confirmText: '削除する', onConfirm: () => handleDelete(id), }); };
+  const handleDelete = async (id: number) => { closeModal(); try { const { data: targetItem, error: fetchError } = await supabase.from('expenses').select('receipt_url').eq('id', id).single(); if (fetchError) throw fetchError; if (targetItem?.receipt_url) { const fileName = targetItem.receipt_url.split('/').pop(); if (fileName) await supabase.storage.from('receipts').remove([fileName]); } const { error: deleteError } = await supabase.from('expenses').delete().eq('id', id); if (deleteError) throw deleteError; setExpenses(expenses.filter(e => e.id !== id)); } catch (error) { console.error('削除処理エラー:', error); alert('削除に失敗しました'); } };
+  const handleEditClick = (item: Expense) => { if (checkDemo()) return; setEditingItem(item); setIsEditOpen(true); };
   const handleUpdateComplete = () => { fetchExpenses(); };
-  const handleAnalyze = () => {
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      setAnalysisResult(`## 🚧 準備中 (Coming Soon)\n\nAI家計診断機能は、次回のアップデートで公開予定です！\n\n実装をお楽しみに！`);
-      setIsAnalysisOpen(true); setIsAnalyzing(false);
-    }, 500);
-  };
-
-  const handleReaction = async (item: Expense, reactionId: string) => {
-    const currentReactions = item.reactions || {};
-    const myCurrentReactionId = currentReactions[myUserName];
-    let newReactions = { ...currentReactions };
-    if (myCurrentReactionId === reactionId) delete newReactions[myUserName]; else newReactions[myUserName] = reactionId;
-    setActivePickerId(null);
-    const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, reactions: newReactions } : e);
-    setExpenses(updatedExpenses);
-    await supabase.from('expenses').update({ reactions: newReactions }).eq('id', item.id);
-  };
-
-  const handleCommentSubmit = async (item: Expense) => {
-    if (!commentText.trim()) return;
-    const newComment: Comment = { id: generateId(), user: myUserName, text: commentText.trim(), timestamp: new Date().toISOString(), };
-    const currentComments = item.comments || [];
-    const newComments = [...currentComments, newComment];
-    const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, comments: newComments } : e);
-    setExpenses(updatedExpenses);
-    setCommentText('');
-    await supabase.from('expenses').update({ comments: newComments }).eq('id', item.id);
-  };
-
-  const handleDeleteCommentClick = (item: Expense, commentId: string) => {
-    setModalConfig({ 
-      isOpen: true, 
-      type: 'confirm', 
-      title: 'コメントの削除', 
-      message: '本当にこのコメントを削除しますか？', 
-      confirmText: '削除する',
-      onConfirm: () => executeDeleteComment(item, commentId), 
-    });
-  };
-  const executeDeleteComment = async (item: Expense, commentId: string) => {
-    closeModal();
-    const currentComments = item.comments || [];
-    const newComments = currentComments.filter(c => c.id !== commentId);
-    const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, comments: newComments } : e);
-    setExpenses(updatedExpenses);
-    await supabase.from('expenses').update({ comments: newComments }).eq('id', item.id);
-  };
-
+  const handleAnalyze = () => { setIsAnalyzing(true); setTimeout(() => { const msg = isDemoMode ? `## 🤖 DEMO分析\n\nこれはデモデータに基づいた分析です。\n今月の支出バランスは非常に良好です！` : `## 🚧 準備中 (Coming Soon)\n\nAI家計診断機能は、次回のアップデートで公開予定です！\n\n実装をお楽しみに！`; setAnalysisResult(msg); setIsAnalysisOpen(true); setIsAnalyzing(false); }, 500); };
+  const handleReaction = async (item: Expense, reactionId: string) => { if (checkDemo()) return; const currentReactions = item.reactions || {}; const myCurrentReactionId = currentReactions[myUserName]; let newReactions = { ...currentReactions }; if (myCurrentReactionId === reactionId) delete newReactions[myUserName]; else newReactions[myUserName] = reactionId; setActivePickerId(null); const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, reactions: newReactions } : e); setExpenses(updatedExpenses); await supabase.from('expenses').update({ reactions: newReactions }).eq('id', item.id); };
+  const handleCommentSubmit = async (item: Expense) => { if (checkDemo()) return; if (!commentText.trim()) return; const newComment: Comment = { id: generateId(), user: myUserName, text: commentText.trim(), timestamp: new Date().toISOString(), }; const currentComments = item.comments || []; const newComments = [...currentComments, newComment]; const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, comments: newComments } : e); setExpenses(updatedExpenses); setCommentText(''); await supabase.from('expenses').update({ comments: newComments }).eq('id', item.id); };
+  const handleDeleteCommentClick = (item: Expense, commentId: string) => { if (checkDemo()) return; setModalConfig({ isOpen: true, type: 'confirm', title: 'コメントの削除', message: '本当にこのコメントを削除しますか？', confirmText: '削除する', onConfirm: () => executeDeleteComment(item, commentId), }); };
+  const executeDeleteComment = async (item: Expense, commentId: string) => { closeModal(); const currentComments = item.comments || []; const newComments = currentComments.filter(c => c.id !== commentId); const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, comments: newComments } : e); setExpenses(updatedExpenses); await supabase.from('expenses').update({ comments: newComments }).eq('id', item.id); };
   const handleStartEditComment = (comment: Comment) => { setEditingCommentId(comment.id); setEditingText(comment.text); };
-  const handleSaveEditComment = async (item: Expense) => {
-    if (!editingText.trim() || !editingCommentId) return;
-    const currentComments = item.comments || [];
-    const newComments = currentComments.map(c => c.id === editingCommentId ? { ...c, text: editingText.trim() } : c);
-    const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, comments: newComments } : e);
-    setExpenses(updatedExpenses); setEditingCommentId(null); setEditingText('');
-    await supabase.from('expenses').update({ comments: newComments }).eq('id', item.id);
-  };
+  const handleSaveEditComment = async (item: Expense) => { if (checkDemo()) return; if (!editingText.trim() || !editingCommentId) return; const currentComments = item.comments || []; const newComments = currentComments.map(c => c.id === editingCommentId ? { ...c, text: editingText.trim() } : c); const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, comments: newComments } : e); setExpenses(updatedExpenses); setEditingCommentId(null); setEditingText(''); await supabase.from('expenses').update({ comments: newComments }).eq('id', item.id); };
   const formatDate = (dateString: string) => { const d = new Date(dateString); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
-  // Calculation
   const totalMe = expenses.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
   const totalPartner = expenses.filter(e => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
   const totalAmount = totalMe + totalPartner;
@@ -335,34 +168,38 @@ export default function SettlementPage() {
   const roundTo100 = (num: number) => { const abs = Math.abs(num); const rounded = Math.floor(abs / 100) * 100; return num >= 0 ? rounded : -rounded; };
   const finalBalance = useSmartSplit ? roundTo100(smartBalanceRaw) : Math.round(basicBalance);
   const monthLabel = `${currentMonth.getFullYear()}年${currentMonth.getMonth() + 1}月`;
-
-  // 自分が「払う側」か「受け取る側」か判定
   const isPayer = finalBalance < 0;
   const isReceiver = finalBalance > 0;
-  const isSettled = monthlyStatus.is_received; // 受け取り完了＝精算完了
+  const isSettled = monthlyStatus.is_received;
 
-  if (!myUserName) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
+  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
 
   return (
-    <div className="px-4 py-8 sm:p-8 max-w-md mx-auto min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 text-gray-700 relative pb-32 font-medium">
-      {/* モーダルに confirmText を渡す */}
-      <Modal 
-        isOpen={modalConfig.isOpen} 
-        onClose={closeModal} 
-        type={modalConfig.type} 
-        title={modalConfig.title} 
-        message={modalConfig.message} 
-        onConfirm={modalConfig.onConfirm} 
-        confirmText={modalConfig.confirmText} 
-      />
+    <div className={`px-4 py-8 sm:p-8 max-w-md mx-auto min-h-screen text-gray-700 relative pb-32 font-medium transition-colors duration-500 ${isDemoMode ? 'bg-orange-50/50' : 'bg-gradient-to-br from-slate-50 to-gray-100'}`}>
+      
+      {isDemoMode && (
+        <div className="fixed top-0 left-0 w-full bg-orange-400 text-white text-xs font-bold text-center py-1 z-50 shadow-md">
+          🚧 DEMO MODE - データは保存されません
+        </div>
+      )}
+
+      <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText={modalConfig.confirmText} />
       <EditModal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} expense={editingItem} onUpdate={handleUpdateComplete} />
       <AnalysisModal isOpen={isAnalysisOpen} onClose={() => setIsAnalysisOpen(false)} analysis={analysisResult} loading={isAnalyzing} />
 
-      <div className="flex justify-between items-center mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-700 drop-shadow-sm">精算</h1>
-        <button onClick={() => window.location.href = '/'} className="text-xs sm:text-sm font-bold text-slate-600 bg-white/80 backdrop-blur-md border border-white/40 px-3 py-2 sm:px-4 sm:py-2 rounded-full hover:bg-white hover:-translate-y-0.5 transition-all shadow-sm flex items-center gap-1">
-          <ArrowLeft size={14} /> 入力へ
-        </button>
+      <div className="flex justify-between items-center mb-6 sm:mb-8 mt-4">
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-700 drop-shadow-sm flex items-center gap-2">
+          精算 
+          {isDemoMode && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full border border-orange-200">DEMO</span>}
+        </h1>
+        
+        <div className="flex gap-2">
+          {/* ▼スイッチボタンは削除しました */}
+
+          <button onClick={() => window.location.href = '/'} className="text-xs sm:text-sm font-bold text-slate-600 bg-white/80 backdrop-blur-md border border-white/40 px-3 py-2 sm:px-4 sm:py-2 rounded-full hover:bg-white hover:-translate-y-0.5 transition-all shadow-sm flex items-center gap-1">
+            <ArrowLeft size={14} /> 入力へ
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-between bg-white/70 backdrop-blur-xl p-3 sm:p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-6 sm:mb-8 relative overflow-hidden">
@@ -413,7 +250,10 @@ export default function SettlementPage() {
                    <span className="font-bold">精算完了</span>
                    {/* 受け取る側のみ、完了を取り消せるボタンを表示 */}
                    {isReceiver && (
-                     <button onClick={() => handleStatusClick('received')} className="ml-2 bg-white/20 p-1 rounded-full hover:bg-white/40"><X size={14} /></button>
+                     <button onClick={() => handleStatusClick('received')} className="ml-2 bg-white/20 p-1 rounded-full hover:bg-white/40">
+                        {/* デモモードの時はアイコンをLockに変更 */}
+                        {isDemoMode ? <Lock size={14} /> : <X size={14} />}
+                     </button>
                    )}
                  </div>
               ) : (
@@ -422,7 +262,7 @@ export default function SettlementPage() {
                   {isPayer && (
                     <button 
                       onClick={() => handleStatusClick('paid')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-2 font-bold transition-all ${monthlyStatus.is_paid ? 'bg-white/30 text-white' : 'bg-white text-rose-500 shadow-lg'}`}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-2 font-bold transition-all ${monthlyStatus.is_paid ? 'bg-white/30 text-white' : 'bg-white text-rose-500 shadow-lg'} ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}
                     >
                       {monthlyStatus.is_paid ? (
                         <> <Clock size={18} /> 支払い報告済み (相手の確認待ち) </>
@@ -440,7 +280,7 @@ export default function SettlementPage() {
                       )}
                       <button 
                         onClick={() => handleStatusClick('received')}
-                        className="flex items-center gap-2 bg-white text-slate-600 px-6 py-3 rounded-full shadow-lg font-bold hover:bg-slate-50 transition-all active:scale-95"
+                        className={`flex items-center gap-2 bg-white text-slate-600 px-6 py-3 rounded-full shadow-lg font-bold hover:bg-slate-50 transition-all active:scale-95 ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}
                       >
                          <CheckCircle2 size={20} className="text-emerald-500" /> 受け取り完了 (精算済みにする)
                       </button>
