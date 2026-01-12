@@ -6,7 +6,7 @@ import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
 import CategoryChart from '../components/CategoryChart';
 import AnalysisModal from '../components/AnalysisModal';
-import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft } from 'lucide-react';
+import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock } from 'lucide-react';
 
 type Comment = {
   id: string;
@@ -26,6 +26,11 @@ type Expense = {
   reactions: { [key: string]: string } | null;
   comments: Comment[] | null;
   receipt_url: string | null;
+};
+
+type MonthlyStatus = {
+  is_paid: boolean;
+  is_received: boolean;
 };
 
 const REACTION_TYPES = [
@@ -50,6 +55,9 @@ export default function SettlementPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [myUserName, setMyUserName] = useState<string>('');
   
+  // その月の支払いステータス
+  const [monthlyStatus, setMonthlyStatus] = useState<MonthlyStatus>({ is_paid: false, is_received: false });
+  
   const [useSmartSplit, setUseSmartSplit] = useState(false);
   const SCAN_BONUS_PER_ITEM = 50; 
 
@@ -59,8 +67,17 @@ export default function SettlementPage() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
 
-  const [modalConfig, setModalConfig] = useState({ isOpen: false, type: 'confirm' as 'alert' | 'confirm', title: '', message: '', onConfirm: () => {}, });
+  // confirmText を追加してボタンの文言を変えられるように変更
+  const [modalConfig, setModalConfig] = useState({
+    isOpen: false,
+    type: 'confirm' as 'alert' | 'confirm',
+    title: '',
+    message: '',
+    confirmText: 'OK', 
+    onConfirm: () => {},
+  });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
+  
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Expense | null>(null);
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
@@ -95,16 +112,116 @@ export default function SettlementPage() {
     setLoading(true);
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
+    
+    // 月のキー (YYYY-MM)
+    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+
     const toYMD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const firstDayStr = toYMD(new Date(year, month, 1));
     const lastDayStr = toYMD(new Date(year, month + 1, 0));
     
-    const { data, error } = await supabase.from('expenses').select('*').gte('purchase_date', firstDayStr).lte('purchase_date', lastDayStr).order('created_at', { ascending: false });
-    if (error) console.error(error); else setExpenses(data || []);
+    // 家計簿データの取得
+    const { data: expensesData, error: expensesError } = await supabase.from('expenses')
+      .select('*')
+      .gte('purchase_date', firstDayStr)
+      .lte('purchase_date', lastDayStr)
+      .order('created_at', { ascending: false });
+    
+    if (expensesError) console.error(expensesError);
+    else setExpenses(expensesData || []);
+
+    // 月のステータス取得
+    const { data: statusData, error: statusError } = await supabase
+      .from('monthly_settlements')
+      .select('*')
+      .eq('month', monthKey)
+      .single();
+    
+    if (statusData) {
+      setMonthlyStatus({ is_paid: statusData.is_paid, is_received: statusData.is_received });
+    } else {
+      setMonthlyStatus({ is_paid: false, is_received: false });
+    }
+
     setLoading(false);
   };
 
   useEffect(() => { fetchExpenses(); }, [currentMonth]);
+
+  // ▼ ステータス変更時の確認モーダル表示
+  const handleStatusClick = (type: 'paid' | 'received') => {
+    const isPaidAction = type === 'paid';
+    
+    // 現在の状態から「次にどうなるか」を判定
+    // paidの場合: trueならfalseにする(取り消し)、falseならtrueにする(完了)
+    const willBeActive = isPaidAction ? !monthlyStatus.is_paid : !monthlyStatus.is_received;
+
+    let title = '';
+    let message = '';
+    let confirmText = '';
+
+    if (isPaidAction) {
+      if (willBeActive) {
+        title = '支払い完了の確認';
+        message = '相手への支払いは完了しましたか？\nステータスを「支払い済み」に変更します。';
+        confirmText = '完了とする';
+      } else {
+        title = '支払いの取り消し';
+        message = '「支払い済み」ステータスを取り消して元に戻しますか？';
+        confirmText = '取り消す';
+      }
+    } else {
+      // 受け取り側
+      if (willBeActive) {
+        title = '精算完了の確認';
+        message = '相手からの受け取りを確認しましたか？\nこれを押すと今月の精算は完了となります。';
+        confirmText = '精算完了';
+      } else {
+        title = '受け取りの取り消し';
+        message = '「精算完了」ステータスを取り消して元に戻しますか？';
+        confirmText = '取り消す';
+      }
+    }
+
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title,
+      message,
+      confirmText,
+      onConfirm: () => executeToggleStatus(type),
+    });
+  };
+
+  // ▼ 実際のDB更新処理
+  const executeToggleStatus = async (type: 'paid' | 'received') => {
+    closeModal();
+
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
+    
+    const newStatus = { ...monthlyStatus };
+    if (type === 'paid') newStatus.is_paid = !newStatus.is_paid;
+    if (type === 'received') newStatus.is_received = !newStatus.is_received;
+
+    // UI更新
+    setMonthlyStatus(newStatus);
+
+    // DB更新
+    const { error } = await supabase.from('monthly_settlements').upsert({
+      month: monthKey,
+      is_paid: newStatus.is_paid,
+      is_received: newStatus.is_received,
+      updated_at: new Date().toISOString()
+    });
+
+    if (error) {
+      console.error('Status update failed:', error);
+      setMonthlyStatus(monthlyStatus); // 失敗したら戻す
+      alert('ステータスの更新に失敗しました');
+    }
+  };
 
   const changeMonth = (amount: number) => {
     const newDate = new Date(currentMonth);
@@ -114,49 +231,28 @@ export default function SettlementPage() {
   };
 
   const handleDeleteClick = (id: number) => {
-    setModalConfig({ isOpen: true, type: 'confirm', title: '記録の削除', message: 'この記録を削除してもよろしいですか？', onConfirm: () => handleDelete(id), });
+    setModalConfig({ 
+      isOpen: true, 
+      type: 'confirm', 
+      title: '記録の削除', 
+      message: 'この記録を削除してもよろしいですか？', 
+      confirmText: '削除する', // 削除時は「削除する」
+      onConfirm: () => handleDelete(id), 
+    });
   };
 
-  // ★修正: 画像も一緒に削除するロジックに変更
   const handleDelete = async (id: number) => {
     closeModal();
-    
     try {
-      // 1. まず削除対象のデータを取得（画像URLを知るため）
-      const { data: targetItem, error: fetchError } = await supabase
-        .from('expenses')
-        .select('receipt_url')
-        .eq('id', id)
-        .single();
-
+      const { data: targetItem, error: fetchError } = await supabase.from('expenses').select('receipt_url').eq('id', id).single();
       if (fetchError) throw fetchError;
-
-      // 2. 画像がある場合、Storageから削除
       if (targetItem?.receipt_url) {
-        // URLの末尾（ファイル名）を取得
         const fileName = targetItem.receipt_url.split('/').pop();
-        
-        if (fileName) {
-          const { error: storageError } = await supabase.storage
-            .from('receipts')
-            .remove([fileName]);
-          
-          if (storageError) {
-            console.error('画像削除エラー(DB削除は続行):', storageError);
-          } else {
-            console.log('画像削除成功:', fileName);
-          }
-        }
+        if (fileName) await supabase.storage.from('receipts').remove([fileName]);
       }
-
-      // 3. データベースから削除
       const { error: deleteError } = await supabase.from('expenses').delete().eq('id', id);
-      
       if (deleteError) throw deleteError;
-
-      // 4. UI更新
       setExpenses(expenses.filter(e => e.id !== id));
-      
     } catch (error) {
       console.error('削除処理エラー:', error);
       alert('削除に失敗しました');
@@ -196,7 +292,14 @@ export default function SettlementPage() {
   };
 
   const handleDeleteCommentClick = (item: Expense, commentId: string) => {
-    setModalConfig({ isOpen: true, type: 'confirm', title: 'コメントの削除', message: '本当にこのコメントを削除しますか？', onConfirm: () => executeDeleteComment(item, commentId), });
+    setModalConfig({ 
+      isOpen: true, 
+      type: 'confirm', 
+      title: 'コメントの削除', 
+      message: '本当にこのコメントを削除しますか？', 
+      confirmText: '削除する',
+      onConfirm: () => executeDeleteComment(item, commentId), 
+    });
   };
   const executeDeleteComment = async (item: Expense, commentId: string) => {
     closeModal();
@@ -233,11 +336,25 @@ export default function SettlementPage() {
   const finalBalance = useSmartSplit ? roundTo100(smartBalanceRaw) : Math.round(basicBalance);
   const monthLabel = `${currentMonth.getFullYear()}年${currentMonth.getMonth() + 1}月`;
 
+  // 自分が「払う側」か「受け取る側」か判定
+  const isPayer = finalBalance < 0;
+  const isReceiver = finalBalance > 0;
+  const isSettled = monthlyStatus.is_received; // 受け取り完了＝精算完了
+
   if (!myUserName) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
 
   return (
     <div className="px-4 py-8 sm:p-8 max-w-md mx-auto min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 text-gray-700 relative pb-32 font-medium">
-      <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText="削除する" />
+      {/* モーダルに confirmText を渡す */}
+      <Modal 
+        isOpen={modalConfig.isOpen} 
+        onClose={closeModal} 
+        type={modalConfig.type} 
+        title={modalConfig.title} 
+        message={modalConfig.message} 
+        onConfirm={modalConfig.onConfirm} 
+        confirmText={modalConfig.confirmText} 
+      />
       <EditModal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} expense={editingItem} onUpdate={handleUpdateComplete} />
       <AnalysisModal isOpen={isAnalysisOpen} onClose={() => setIsAnalysisOpen(false)} analysis={analysisResult} loading={isAnalyzing} />
 
@@ -285,10 +402,56 @@ export default function SettlementPage() {
               </button>
           </div>
 
-          <div className={`p-6 sm:p-8 rounded-3xl text-white shadow-[0_10px_40px_rgb(0,0,0,0.15)] border border-white/20 mb-6 transition-all relative overflow-hidden ${finalBalance === 0 ? 'bg-gradient-to-br from-gray-500 to-gray-600' : finalBalance > 0 ? 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20' : 'bg-gradient-to-br from-rose-400 to-rose-500 shadow-rose-500/20'}`}>
+          <div className={`p-6 sm:p-8 rounded-3xl text-white shadow-[0_10px_40px_rgb(0,0,0,0.15)] border border-white/20 mb-6 transition-all relative overflow-hidden ${isSettled ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : finalBalance === 0 ? 'bg-gradient-to-br from-gray-500 to-gray-600' : finalBalance > 0 ? 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20' : 'bg-gradient-to-br from-rose-400 to-rose-500 shadow-rose-500/20'}`}>
             <div className="absolute inset-0 bg-white/10 mix-blend-overlay pointer-events-none"></div>
-            <p className="text-xs sm:text-sm font-bold opacity-90 mb-2 relative z-10">{monthLabel}の精算{useSmartSplit && ' (調整済)'}</p>
-            <h2 className="text-2xl sm:text-4xl font-black mb-4 relative z-10 drop-shadow-sm leading-tight">
+            
+            {/* 精算ステータス表示エリア */}
+            <div className="relative z-10 mb-4 flex flex-col items-center">
+              {isSettled ? (
+                 <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full backdrop-blur-md mb-2">
+                   <CheckCircle2 size={20} className="text-white" />
+                   <span className="font-bold">精算完了</span>
+                   {/* 受け取る側のみ、完了を取り消せるボタンを表示 */}
+                   {isReceiver && (
+                     <button onClick={() => handleStatusClick('received')} className="ml-2 bg-white/20 p-1 rounded-full hover:bg-white/40"><X size={14} /></button>
+                   )}
+                 </div>
+              ) : (
+                <>
+                  {/* 支払う側の表示 */}
+                  {isPayer && (
+                    <button 
+                      onClick={() => handleStatusClick('paid')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-2 font-bold transition-all ${monthlyStatus.is_paid ? 'bg-white/30 text-white' : 'bg-white text-rose-500 shadow-lg'}`}
+                    >
+                      {monthlyStatus.is_paid ? (
+                        <> <Clock size={18} /> 支払い報告済み (相手の確認待ち) </>
+                      ) : (
+                        <> <Send size={18} /> 支払いを完了する </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* 受け取る側の表示 */}
+                  {isReceiver && (
+                    <div className="flex flex-col items-center gap-2">
+                      {monthlyStatus.is_paid && (
+                        <span className="text-xs bg-white/20 px-3 py-1 rounded-full animate-pulse">相手が「支払い済み」にしました</span>
+                      )}
+                      <button 
+                        onClick={() => handleStatusClick('received')}
+                        className="flex items-center gap-2 bg-white text-slate-600 px-6 py-3 rounded-full shadow-lg font-bold hover:bg-slate-50 transition-all active:scale-95"
+                      >
+                         <CheckCircle2 size={20} className="text-emerald-500" /> 受け取り完了 (精算済みにする)
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <p className="text-xs sm:text-sm font-bold opacity-90 mb-2 relative z-10 text-center">{monthLabel}の精算{useSmartSplit && ' (調整済)'}</p>
+            <h2 className="text-2xl sm:text-4xl font-black mb-4 relative z-10 drop-shadow-sm leading-tight text-center">
               {finalBalance === 0 ? '精算なし' : (
                 <>相手{finalBalance > 0 ? 'から' : 'へ'}<br className="sm:hidden" /><span className="mx-1 sm:mx-3 underline underline-offset-8 decoration-white/50">{Math.abs(finalBalance).toLocaleString()}</span>円{finalBalance > 0 ? 'もらう' : '払う'}</>
               )}
