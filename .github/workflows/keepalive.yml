@@ -1,0 +1,54 @@
+name: Supabase keepalive
+
+# Supabase の無料プランは「過去1週間データベースへのアクセスがない」と
+# プロジェクトを一時停止し、放置するとそのまま削除する。
+# 1日1回だけ軽いクエリを投げて、その判定に引っかからないようにする。
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 毎日 12:00 JST
+  workflow_dispatch: # 手動実行用
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Supabase に軽いクエリを投げる
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -m 30 -o /tmp/body -w '%{http_code}' \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/expenses?select=id&limit=1")
+          echo "HTTP $code"
+          cat /tmp/body || true
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase が応答しませんでした (HTTP $code)"
+            exit 1
+          fi
+
+      # GitHub は「リポジトリに60日間変更がない」とスケジュール実行を無効化する。
+      # 放置対策の仕組みが放置で止まらないよう、月に1度だけ空コミットを打つ。
+      - name: リポジトリの活動を作る (毎月1日のみ)
+        if: github.event_name == 'schedule'
+        run: |
+          set -euo pipefail
+          if [ "$(date -u +%d)" != "01" ]; then
+            echo "1日ではないのでスキップ"
+            exit 0
+          fi
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > .github/last-keepalive
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/last-keepalive
+          git commit -m 'chore: keepalive [skip ci]' || exit 0
+          git push
