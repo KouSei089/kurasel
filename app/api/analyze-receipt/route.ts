@@ -5,6 +5,10 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.GOOGLE_API_KEY) {
+      throw new Error("GOOGLE_API_KEY is not defined");
+    }
+
     const body = await req.json();
     const { imageBase64, mimeType } = body;
 
@@ -12,7 +16,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "画像データがありません" }, { status: 400 });
     }
 
-    const base64Data = imageBase64.split(",")[1];
+    // data:image/jpeg;base64,xxx 形式でも、生の base64 でも受け取れるようにする
+    const base64Data = imageBase64.includes(",")
+      ? imageBase64.split(",")[1]
+      : imageBase64;
     const finalMimeType = mimeType || "image/jpeg";
 
     // 無料枠で安定して使えるモデルエイリアス
@@ -23,8 +30,12 @@ export async function POST(req: Request) {
 
     const prompt = `
       このレシート画像を解析して、以下の情報をJSON形式で抽出してください。
-      日付はYYYY-MM-DD形式、金額は数値のみ。店名が不明なら"不明"としてください。
-      { "store": "店名", "date": "日付", "amount": 金額 }
+      キー名は以下のようにしてください:
+      - store_name (店名: 文字列。不明なら"不明")
+      - amount (合計金額: 数値)
+      - date (日付: YYYY-MM-DD形式)
+      - category (カテゴリ: 'food'(食費), 'daily'(日用品), 'eatout'(外食), 'transport'(交通費), 'other'(その他) から推測)
+      JSONのみを出力してください。余計なマークダウンは不要です。
     `;
 
     const result = await model.generateContent([

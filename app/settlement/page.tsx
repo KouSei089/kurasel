@@ -2,16 +2,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
-import { GoogleGenerativeAI } from '@google/generative-ai'; // AI機能用
 import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
 import CategoryChart from '../components/CategoryChart';
-import AnalysisModal from '../components/AnalysisModal';
 import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock, Lock, ToggleLeft, ToggleRight } from 'lucide-react';
 import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
 
 // Gemini APIの初期化
-const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GOOGLE_API_KEY || '');
 
 type Comment = {
   id: string;
@@ -84,9 +81,6 @@ export default function SettlementPage() {
   
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Expense | null>(null);
-  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const [visibleCount, setVisibleCount] = useState(10);
   const [showDetails, setShowDetails] = useState(false);
@@ -182,85 +176,6 @@ export default function SettlementPage() {
   };
 
   // AI分析実行
-  const handleAnalyze = async () => {
-    
-    setIsAnalyzing(true);
-    setIsAnalysisOpen(true);
-    
-    if (isDemoMode) {
-      setTimeout(() => {
-        const msg = `## 🤖 DEMO分析レポート\n\n**期間:** ${currentMonth.getFullYear()}年${currentMonth.getMonth() + 1}月\n\n### 🌟 素晴らしい点\n食費と自炊のバランスが非常に良いです！外食を控えめにしつつ、スーパーでの買い物を上手に活用できていますね。二人の協力体制が見て取れます。\n\n### 📊 支出の傾向\n今月は「日用品」の割合が少し高めです。まとめ買いをしましたか？来月はストックを確認してから買い出しに行くと、さらに節約できるかもしれません。\n\n### 💡 ワンポイント・アドバイス\n週末に「ノーマネーデー（お金を使わない日）」を1日作ってみましょう。家にあるもので料理を作ったり、散歩を楽しんだりすることで、ゲーム感覚で節約ができますよ！`;
-        setAnalysisResult(msg);
-        setIsAnalysisOpen(true);
-        setIsAnalyzing(false);
-      }, 1500);
-      return;
-    }
-
-    try {
-      // 1. データ集計
-      const totalAmount = expenses.reduce((sum, e) => sum + e.amount, 0);
-      const categorySummary: { [key: string]: number } = {};
-      expenses.forEach(e => {
-        const cat = e.category || 'other';
-        categorySummary[cat] = (categorySummary[cat] || 0) + e.amount;
-      });
-
-      const catNameMap: { [key: string]: string } = {
-        food: '食費(自炊)', daily: '日用品', eatout: '外食', transport: '交通費', other: 'その他'
-      };
-      let categoryText = '';
-      Object.entries(categorySummary).forEach(([cat, amount]) => {
-        categoryText += `- ${catNameMap[cat] || cat}: ${amount.toLocaleString()}円\n`;
-      });
-
-      const myTotal = expenses.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
-      const partnerTotal = totalAmount - myTotal;
-
-      // 2. プロンプト作成
-      const prompt = `
-        あなたは優秀で親しみやすいファイナンシャルプランナーです。
-        同棲中のカップルの今月の家計簿データを分析し、マークダウン形式でアドバイスをください。
-        
-        【データ】
-        ・対象月: ${currentMonth.getFullYear()}年${currentMonth.getMonth() + 1}月
-        ・合計支出: ${totalAmount.toLocaleString()}円
-        ・カテゴリ内訳:
-        ${categoryText}
-        ・負担額: 私(${myTotal.toLocaleString()}円) vs 相手(${partnerTotal.toLocaleString()}円)
-
-        【出力フォーマット】
-        ## 🏠 ${currentMonth.getMonth() + 1}月の家計診断
-        
-        ### 🌟 Goodポイント
-        (ここが良い！という点を具体的に褒めてください。絵文字を使って明るく)
-
-        ### 📊 分析コメント
-        (支出のバランスや特徴について、客観的かつ優しい口調で分析してください)
-
-        ### 💡 二人へのアドバイス
-        (来月に向けて、無理なくできる節約のコツや、良好な関係を保つためのお金のアドバイスを1つ提案してください)
-
-        ※口調は「〜ですね」「〜しましょう」といった丁寧で優しい語りかけ口調でお願いします。
-        ※400文字以内でまとめてください。
-      `;
-
-      // 3. AI送信
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      const result = await model.generateContent(prompt);
-      const response = result.response.text();
-
-      setAnalysisResult(response);
-      setIsAnalysisOpen(true);
-
-    } catch (error) {
-      console.error('Analysis error:', error);
-      alert('分析に失敗しました。時間をおいて再度お試しください。');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
   const handleStatusClick = (type: 'paid' | 'received') => {
     if (checkDemo()) return;
     const isPaidAction = type === 'paid';
@@ -428,7 +343,6 @@ export default function SettlementPage() {
 
       <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText={modalConfig.confirmText} />
       <EditModal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} expense={editingItem} onUpdate={handleUpdateComplete} />
-      <AnalysisModal isOpen={isAnalysisOpen} onClose={() => setIsAnalysisOpen(false)} analysis={analysisResult} loading={isAnalyzing} />
 
       <div className="flex justify-between items-center mb-6 sm:mb-8 mt-4">
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-700 drop-shadow-sm flex items-center gap-2">
@@ -455,11 +369,6 @@ export default function SettlementPage() {
       ) : (
         <>
           <CategoryChart expenses={expenses} />
-
-          <button onClick={handleAnalyze} className="w-full mb-6 sm:mb-8 py-3 sm:py-4 bg-white/70 backdrop-blur-xl border border-white/40 rounded-3xl shadow-sm text-slate-600 font-bold hover:bg-white hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 group text-sm sm:text-base">
-            <span className="text-xl sm:text-2xl group-hover:scale-110 transition-transform">🤖</span>
-            <span>AI家計診断を受ける</span>
-          </button>
 
           {/* スマート精算切り替え */}
           <div className="mb-6 bg-white/60 backdrop-blur-md p-3 sm:p-4 rounded-3xl border border-white/40 shadow-sm flex items-center justify-between">

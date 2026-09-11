@@ -2,13 +2,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Camera, Upload, Check, Loader2, ArrowRight, Receipt, LogOut, User, X } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import Modal from './components/Modal';
-
-const apiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || '';
-const genAI = new GoogleGenerativeAI(apiKey);
 
 export default function Home() {
   const router = useRouter();
@@ -119,12 +115,6 @@ export default function Home() {
   };
 
   const scanReceipt = async (file: File) => {
-    if (!apiKey) {
-      alert('APIキーが設定されていません');
-      setIsScanning(false);
-      return;
-    }
-
     try {
       const base64Data = await new Promise<string>((resolve) => {
         const reader = new FileReader();
@@ -135,26 +125,15 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
 
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-      
-      const prompt = `
-        このレシート画像を解析して、以下の情報をJSON形式で抽出してください。
-        キー名は以下のようにしてください:
-        - store_name (店名: 文字列)
-        - amount (合計金額: 数値)
-        - date (日付: YYYY-MM-DD形式)
-        - category (カテゴリ: 'food'(食費), 'daily'(日用品), 'eatout'(外食), 'transport'(交通費), 'other'(その他) から推測)
-        JSONのみを出力してください。余計なマークダウンは不要です。
-      `;
+      // Geminiのキーはサーバー側にしか置かないので、APIルート経由で呼ぶ
+      const res = await fetch('/api/analyze-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64Data, mimeType: file.type }),
+      });
 
-      const result = await model.generateContent([
-        prompt,
-        { inlineData: { data: base64Data, mimeType: file.type } },
-      ]);
-
-      const responseText = result.response.text();
-      const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-      const data = JSON.parse(cleanedText);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '読み取りに失敗しました');
 
       if (data.store_name) setStoreName(data.store_name);
       if (data.amount) setAmount(String(data.amount));
