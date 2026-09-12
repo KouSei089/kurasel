@@ -20,7 +20,12 @@ export default function TemplateModal({ isOpen, onClose, onUpdate }: TemplateMod
   const [users, setUsers] = useState<{id: number, name: string}[]>([]);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  // 開くたびにフォームを空に戻す。
+  // useEffect内でsetStateすると再レンダリングが1往復増えるため、
+  // Reactが推奨するレンダリング中の状態調整で行う。
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) {
       setFormData({
         title: '',
@@ -29,14 +34,18 @@ export default function TemplateModal({ isOpen, onClose, onUpdate }: TemplateMod
         category: 'food',
         paid_by: localStorage.getItem('scan_io_user_name') || '',
       });
-      fetchUsers();
     }
-  }, [isOpen]);
+  }
 
-  const fetchUsers = async () => {
-    const { data } = await supabase.from('users').select('id, name');
-    if (data) setUsers(data);
-  };
+  // ユーザー一覧の取得は外部への問い合わせなのでeffectのまま
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    supabase.from('users').select('id, name').then(({ data }) => {
+      if (!cancelled && data) setUsers(data);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   const handleSave = async () => {
     if (!formData.title || !formData.amount || !formData.paid_by) {

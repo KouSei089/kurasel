@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Gemini の利用可能モデルを調べる使い捨てスクリプト。
+    // アプリからは呼ばれないので CommonJS のまま残す。
+    "scripts/**",
   ]),
 ]);
 

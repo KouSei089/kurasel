@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
-import { LogIn, UserPlus, User, Loader2, ArrowRight, Lock, Sparkles } from 'lucide-react';
+import { UserPlus, User, Loader2, ArrowRight, Lock, Sparkles } from 'lucide-react';
 
 type UserType = {
   id: number;

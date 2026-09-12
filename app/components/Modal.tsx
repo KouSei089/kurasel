@@ -12,7 +12,7 @@ type ModalProps = {
   defaultValue?: string; // prompt用の初期値
 };
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function Modal({
   isOpen,
@@ -27,10 +27,14 @@ export default function Modal({
 }: ModalProps) {
   const [inputValue, setInputValue] = useState(defaultValue);
 
-  // モーダルが開くたびに初期値をセットし直す
-  useEffect(() => {
+  // モーダルが開くたびに初期値をセットし直す。
+  // useEffect内でsetStateすると余計な再レンダリングが1往復増えるため、
+  // Reactが推奨するレンダリング中の状態調整で行う。
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
     if (isOpen) setInputValue(defaultValue);
-  }, [isOpen, defaultValue]);
+  }
 
   if (!isOpen) return null;
 

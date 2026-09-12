@@ -10,7 +10,7 @@
 ## ✨ 特徴 (Features)
 
 * **🤖 AIレシートスキャン**
-    * Google Gemini 1.5 Flash を活用。カメラでレシートを撮るだけで「店名・金額・日付・カテゴリ」をAIが即座に自動入力します。
+    * Google Gemini を活用。カメラでレシートを撮るだけで「店名・金額・日付・カテゴリ」をAIが即座に自動入力します。
 * **✅ 精算ステータス管理**
     * 月ごとに「支払い完了」「受け取り完了」のステータスを管理。誤操作防止の確認機能付きで、払い忘れや二重払いを防ぎます。
 * **✨ スマート精算**
@@ -26,13 +26,13 @@
 
 ## 🛠️ 技術スタック (Tech Stack)
 
-* **Framework:** Next.js 14 (App Router)
+* **Framework:** Next.js 16 (App Router)
 * **Language:** TypeScript
 * **Styling:** Tailwind CSS
 * **Database & Storage:** Supabase (PostgreSQL)
-* **AI:** Google Generative AI SDK (Gemini 1.5 Flash)
+* **AI:** Google Generative AI SDK (gemini-flash-latest)
 * **Icons:** Lucide React
-* **Deployment:** Netlify / Vercel
+* **Deployment:** Vercel
 
 ## 🚀 ローカルでの実行方法 (Setup)
 
@@ -94,7 +94,7 @@ graph TD
     end
     
     subgraph "AI Service"
-        Gemini[Google Gemini 1.5 Flash]
+        Gemini[Google Gemini]
     end
     
     subgraph "Backend (Supabase)"

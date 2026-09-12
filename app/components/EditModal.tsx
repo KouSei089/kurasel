@@ -21,23 +21,33 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
   const [users, setUsers] = useState<{id: number, name: string}[]>([]);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && expense) {
+  // 開いた対象が変わったらフォームを入れ直す。
+  // useEffect内でsetStateすると再レンダリングが1往復増えるため、
+  // Reactが推奨するレンダリング中の状態調整で行う。
+  const target = isOpen && expense ? expense : null;
+  const [prevTarget, setPrevTarget] = useState(target);
+  if (target !== prevTarget) {
+    setPrevTarget(target);
+    if (target) {
       setFormData({
-        store_name: expense.store_name,
-        purchase_date: expense.purchase_date,
-        amount: expense.amount,
-        category: expense.category || 'food',
-        paid_by: expense.paid_by,
+        store_name: target.store_name,
+        purchase_date: target.purchase_date,
+        amount: target.amount,
+        category: target.category || 'food',
+        paid_by: target.paid_by,
       });
-      fetchUsers();
     }
-  }, [isOpen, expense]);
+  }
 
-  const fetchUsers = async () => {
-    const { data } = await supabase.from('users').select('id, name').order('id');
-    if (data) setUsers(data);
-  };
+  // ユーザー一覧の取得は外部への問い合わせなのでeffectのまま
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    supabase.from('users').select('id, name').order('id').then(({ data }) => {
+      if (!cancelled && data) setUsers(data);
+    });
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   const handleSave = async () => {
     setSaving(true);

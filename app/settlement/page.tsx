@@ -1,11 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useRouter } from 'next/navigation';
 import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
 import CategoryChart from '../components/CategoryChart';
-import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock, Lock, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock, Lock } from 'lucide-react';
 import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
 
 // Gemini APIの初期化
@@ -118,7 +118,7 @@ export default function SettlementPage() {
     }
   };
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(async () => {
     setLoading(true);
 
     if (isDemoMode) {
@@ -160,11 +160,11 @@ export default function SettlementPage() {
     }
 
     setLoading(false);
-  };
+  }, [currentMonth, isDemoMode]);
 
-  useEffect(() => { 
-    if (myUserName) fetchExpenses(); 
-  }, [currentMonth, isDemoMode, myUserName]);
+  useEffect(() => {
+    if (myUserName) fetchExpenses();
+  }, [myUserName, fetchExpenses]);
 
   // デモモード操作ガード
   const checkDemo = () => {
@@ -260,7 +260,7 @@ export default function SettlementPage() {
     if (checkDemo()) return;
     const currentReactions = item.reactions || {};
     const myCurrentReactionId = currentReactions[myUserName];
-    let newReactions = { ...currentReactions };
+    const newReactions = { ...currentReactions };
     if (myCurrentReactionId === reactionId) delete newReactions[myUserName]; else newReactions[myUserName] = reactionId;
     setActivePickerId(null);
     const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, reactions: newReactions } : e);

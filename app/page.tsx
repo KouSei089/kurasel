@@ -154,7 +154,7 @@ export default function Home() {
       const fileExt = 'jpg';
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${fileName}`;
-      const { data, error: uploadError } = await supabase.storage.from('receipts').upload(filePath, compressedFile, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
+      const { error: uploadError } = await supabase.storage.from('receipts').upload(filePath, compressedFile, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(filePath);
       return urlData.publicUrl;
