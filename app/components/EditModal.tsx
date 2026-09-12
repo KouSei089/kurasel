@@ -83,8 +83,8 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
-      <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-xl animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity overflow-y-auto">
+      <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-xl animate-in zoom-in-95 duration-200 max-h-full overflow-y-auto">
         <h3 className="text-xl font-bold mb-6 text-gray-800">記録の編集</h3>
         
         <div className="space-y-6">

@@ -50,6 +50,15 @@ const formatDateTime = (isoString: string) => {
   return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 };
 
+// 履歴に出すのは「買った日」。created_atは入力した日時なので、
+// まとめて入力すると全部同じ日付に見えてしまう。
+// 月の絞り込みもpurchase_dateで行っているので基準を揃える。
+const formatPurchaseDate = (ymd: string) => {
+  if (!ymd) return '';
+  const [y, m, d] = ymd.split('-');
+  return `${y}/${m}/${d}`;
+};
+
 export default function SettlementPage() {
   const router = useRouter();
 
@@ -415,7 +424,7 @@ export default function SettlementPage() {
                       className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-2 font-bold transition-all ${monthlyStatus.is_paid ? 'bg-white/30 text-white' : 'bg-white text-rose-500 shadow-lg'} ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}
                     >
                       {monthlyStatus.is_paid ? (
-                        <> <Clock size={18} /> 支払い報告済み (相手の確認待ち) </>
+                        <> <Clock size={18} /> <span className="whitespace-nowrap">支払い報告済み</span> </>
                       ) : (
                         <> <Send size={18} /> 支払いを完了する </>
                       )}
@@ -432,7 +441,7 @@ export default function SettlementPage() {
                         onClick={() => handleStatusClick('received')}
                         className={`flex items-center gap-2 bg-white text-slate-600 px-6 py-3 rounded-full shadow-lg font-bold hover:bg-slate-50 transition-all active:scale-95 ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}
                       >
-                         <CheckCircle2 size={20} className="text-emerald-500" /> 受け取り完了 (精算済みにする)
+                         <CheckCircle2 size={20} className="text-emerald-500" /> <span className="whitespace-nowrap">受け取り完了</span>
                       </button>
                     </div>
                   )}
@@ -520,9 +529,9 @@ export default function SettlementPage() {
                                   )}
                               </div>
                               <div className="flex items-center gap-2">
-                                {item.created_at && (
+                                {item.purchase_date && (
                                   <p className="text-gray-400 text-[10px] font-mono font-bold">
-                                    {formatDateTime(item.created_at)}
+                                    {formatPurchaseDate(item.purchase_date)}
                                   </p>
                                 )}
                               </div>
@@ -571,7 +580,7 @@ export default function SettlementPage() {
                           {isMe && (
                             <div className="ml-auto flex gap-3">
                               <button onClick={() => handleEditClick(item)} className="text-xs font-bold text-slate-400 hover:text-blue-500 transition-colors">編集</button>
-                              <button onClick={() => handleDeleteClick(item.id)} className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors">削除</button>
+                              <button onClick={() => handleDeleteClick(item.id)} className="text-xs font-bold text-rose-400 hover:text-rose-600 transition-colors">削除</button>
                             </div>
                           )}
                         </div>

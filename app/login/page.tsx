@@ -109,8 +109,10 @@ export default function LoginPage() {
                   <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">合言葉 (Password)</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3.5 pl-11 pr-4 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:bg-white transition-all placeholder:text-slate-300"

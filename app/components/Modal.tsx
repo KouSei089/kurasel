@@ -39,8 +39,8 @@ export default function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden transform transition-all scale-100 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden max-h-full transform transition-all scale-100 animate-in fade-in zoom-in-95 duration-200">
         
         {/* コンテンツエリア */}
         <div className="p-6 text-center">

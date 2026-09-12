@@ -85,7 +85,7 @@ export default function TemplateModal({ isOpen, onClose, onUpdate }: TemplateMod
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
       <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-xl animate-in zoom-in-95 duration-200">
         <h3 className="text-xl font-bold mb-6 text-gray-800">よく使う支払いの登録</h3>
         <p className="text-sm text-gray-500 mb-6">ボタンを押すだけで登録できるようになります。</p>
