@@ -2,9 +2,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
-import { Camera, Upload, Check, Loader2, ArrowRight, Receipt, LogOut, User, X } from 'lucide-react';
-import imageCompression from 'browser-image-compression';
+import { Camera, Upload, Check, Loader2, ArrowRight, Receipt, LogOut, User, X, Plane } from 'lucide-react';
 import Modal from './components/Modal';
+import ExcludedToggle from './components/ExcludedToggle';
+import { normalizeImage, scanReceipt, uploadReceipt } from './lib/receipt';
 
 export default function Home() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function Home() {
   const [amount, setAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState('food');
+  const [isExcluded, setIsExcluded] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -84,83 +86,29 @@ export default function Home() {
 
     setIsScanning(true);
 
+    let processFile: File;
     try {
-      let processFile = file;
-
-      // HEIC変換処理
-      if (file.name.toLowerCase().endsWith('.heic') || file.type === 'image/heic') {
-        try {
-          const heic2any = (await import('heic2any')).default;
-          const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.7 });
-          const blob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-          processFile = new File([blob], file.name.replace(/\.heic$/i, '.jpg'), { type: 'image/jpeg' });
-        } catch (e) {
-          console.error('HEIC変換エラー:', e);
-          alert('画像の形式変換に失敗しました。');
-          setIsScanning(false);
-          return;
-        }
-      }
-
-      setFileToUpload(processFile);
-      const url = URL.createObjectURL(processFile);
-      setPreviewUrl(url);
-      
-      await scanReceipt(processFile);
-
-    } catch (error) {
-      console.error('File processing error:', error);
+      processFile = await normalizeImage(file);
+    } catch (e) {
+      console.error('HEIC変換エラー:', e);
+      alert('画像の形式変換に失敗しました。');
       setIsScanning(false);
+      return;
     }
-  };
 
-  const scanReceipt = async (file: File) => {
+    setFileToUpload(processFile);
+    setPreviewUrl(URL.createObjectURL(processFile));
+
     try {
-      const base64Data = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          resolve(base64);
-        };
-        reader.readAsDataURL(file);
-      });
-
-      // Geminiのキーはサーバー側にしか置かないので、APIルート経由で呼ぶ
-      const res = await fetch('/api/analyze-receipt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64Data, mimeType: file.type }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '読み取りに失敗しました');
-
+      const data = await scanReceipt(processFile);
       if (data.store_name) setStoreName(data.store_name);
       if (data.amount) setAmount(String(data.amount));
       if (data.date) setPurchaseDate(data.date);
       if (data.category) setCategory(data.category);
-
     } catch (error) {
       console.error('Scan error:', error);
     } finally {
       setIsScanning(false);
-    }
-  };
-
-  const uploadImageToSupabase = async (file: File) => {
-    try {
-      const options = { maxSizeMB: 0.1, maxWidthOrHeight: 1024, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.6 };
-      const compressedFile = await imageCompression(file, options);
-      const fileExt = 'jpg';
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `${fileName}`;
-      const { error: uploadError } = await supabase.storage.from('receipts').upload(filePath, compressedFile, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(filePath);
-      return urlData.publicUrl;
-    } catch (error: any) {
-      console.error('Upload failed:', error);
-      return null;
     }
   };
 
@@ -180,6 +128,7 @@ export default function Home() {
           setStoreName('');
           setAmount('');
           setCategory('food');
+          setIsExcluded(false);
           setPreviewUrl(null);
           setFileToUpload(null);
           if(cameraInputRef.current) cameraInputRef.current.value = '';
@@ -201,7 +150,7 @@ export default function Home() {
       // --- 本番用の保存処理 ---
       let uploadedUrl = null;
       if (fileToUpload) {
-        uploadedUrl = await uploadImageToSupabase(fileToUpload);
+        uploadedUrl = await uploadReceipt(fileToUpload);
       }
 
       const { error } = await supabase.from('expenses').insert({
@@ -211,6 +160,7 @@ export default function Home() {
         paid_by: myUserName,
         category: category,
         receipt_url: uploadedUrl,
+        is_excluded: isExcluded,
       });
 
       if (error) throw error;
@@ -218,6 +168,7 @@ export default function Home() {
       setStoreName('');
       setAmount('');
       setCategory('food');
+      setIsExcluded(false);
       setPreviewUrl(null);
       setFileToUpload(null);
       
@@ -275,6 +226,18 @@ export default function Home() {
           <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
+
+      {/* 旅行の支出はここでは記録しない。専用画面へ誘導する */}
+      <button onClick={() => router.push('/trips')} className="w-full mb-6 sm:mb-8 flex items-center justify-between bg-sky-50/80 backdrop-blur-md border border-sky-100 px-4 py-3 rounded-2xl shadow-sm hover:bg-sky-100/80 transition-all group">
+        <span className="flex items-center gap-3">
+          <span className="p-2 bg-white rounded-full shadow-sm"><Plane size={16} className="text-sky-500" /></span>
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-sm font-black text-slate-700">旅行の記録・精算</span>
+            <span className="text-[10px] font-bold text-slate-400">日常の家計とは別に管理します</span>
+          </span>
+        </span>
+        <ArrowRight size={16} className="text-sky-400 group-hover:translate-x-1 transition-transform" />
+      </button>
 
       <div className="bg-white/70 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-6 sm:mb-8 relative overflow-hidden text-center group transition-all hover:shadow-[0_8px_40px_rgb(0,0,0,0.12)]">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/50 to-transparent pointer-events-none"></div>
@@ -351,6 +314,7 @@ export default function Home() {
               ))}
             </div>
           </div>
+          <ExcludedToggle value={isExcluded} onChange={setIsExcluded} />
         </div>
         <button onClick={handleSave} disabled={isSaving} className="mt-6 sm:mt-8 w-full py-3 sm:py-4 bg-slate-800 text-white font-black text-base sm:text-lg rounded-2xl shadow-lg shadow-slate-300 hover:bg-slate-700 hover:-translate-y-0.5 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 relative z-10">{isSaving ? <Loader2 className="animate-spin" /> : <Check strokeWidth={3} />}<span>記録する</span></button>
       </div>

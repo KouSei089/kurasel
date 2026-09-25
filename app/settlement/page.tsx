@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
 import CategoryChart from '../components/CategoryChart';
-import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock, Lock } from 'lucide-react';
+import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock, Lock, Gift } from 'lucide-react';
 import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
 
 // Gemini APIの初期化
@@ -28,6 +28,7 @@ type Expense = {
   reactions: { [key: string]: string } | null;
   comments: Comment[] | null;
   receipt_url: string | null;
+  is_excluded: boolean; // おごり等で割り勘の対象外
 };
 
 type MonthlyStatus = {
@@ -321,9 +322,26 @@ export default function SettlementPage() {
   };
   const formatDate = (dateString: string) => { const d = new Date(dateString); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
+  const handleToggleExcluded = async (item: Expense) => {
+    if (checkDemo()) return;
+    const next = !item.is_excluded;
+    setExpenses(prev => prev.map(e => e.id === item.id ? { ...e, is_excluded: next } : e));
+    const { error } = await supabase.from('expenses').update({ is_excluded: next }).eq('id', item.id);
+    if (error) {
+      console.error(error);
+      setExpenses(prev => prev.map(e => e.id === item.id ? { ...e, is_excluded: !next } : e));
+      alert('更新に失敗しました');
+    }
+  };
+
   // Calculation
-  const totalMe = expenses.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
-  const totalPartner = expenses.filter(e => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
+  // おごり(is_excluded)は払った人の自腹扱いなので金額の計算には入れない。
+  // スキャン手当は「記録する手間」へのものなので件数には含める。
+  const included = expenses.filter(e => !e.is_excluded);
+  const excluded = expenses.filter(e => e.is_excluded);
+  const excludedAmount = excluded.reduce((sum, e) => sum + e.amount, 0);
+  const totalMe = included.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
+  const totalPartner = included.filter(e => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
   const totalAmount = totalMe + totalPartner;
   const splitAmount = Math.round(totalAmount / 2); 
   const basicBalance = totalMe - splitAmount; 
@@ -377,7 +395,7 @@ export default function SettlementPage() {
         <div className="text-center py-12 text-slate-600 font-bold animate-pulse">読み込み中...</div>
       ) : (
         <>
-          <CategoryChart expenses={expenses} />
+          <CategoryChart expenses={included} />
 
           {/* スマート精算切り替え */}
           <div className="mb-6 bg-white/60 backdrop-blur-md p-3 sm:p-4 rounded-3xl border border-white/40 shadow-sm flex items-center justify-between">
@@ -467,10 +485,13 @@ export default function SettlementPage() {
               
               {showDetails && (
                 <div className="px-4 pb-4 pt-1 text-xs space-y-2 opacity-90 border-t border-white/10">
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>全体の支出</span><span className="font-mono">{totalAmount.toLocaleString()} 円</span></div>
+                  <div className="flex justify-between border-b border-white/10 py-1"><span>割り勘の対象</span><span className="font-mono">{totalAmount.toLocaleString()} 円</span></div>
                   <div className="flex justify-between border-b border-white/10 py-1"><span>1人あたり (÷2)</span><span className="font-mono">{splitAmount.toLocaleString()} 円</span></div>
                   <div className="flex justify-between border-b border-white/10 py-1"><span>あなたの立替済</span><span className="font-mono">{totalMe.toLocaleString()} 円</span></div>
                   <div className="flex justify-between border-b border-white/10 py-1 text-emerald-200"><span>基本の差額</span><span className="font-mono">{basicBalance > 0 ? '+' : ''}{basicBalance.toLocaleString()} 円</span></div>
+                  {excluded.length > 0 && (
+                    <div className="pt-1 text-[10px] text-center opacity-80">※ おごり {excluded.length}件（{excludedAmount.toLocaleString()}円）は計算に含めていません</div>
+                  )}
                   {useSmartSplit && (
                     <>
                       <div className="flex justify-between border-b border-white/10 py-1 text-amber-200"><span>スキャン手当 ({scanDiff > 0 ? '+' : ''}{scanDiff}回)</span><span className="font-mono">{scanBonus > 0 ? '+' : ''}{scanBonus.toLocaleString()} 円</span></div>
@@ -515,7 +536,7 @@ export default function SettlementPage() {
                     const isCommentOpen = activeCommentId === item.id;
 
                     return (
-                      <li key={item.id} className="bg-white/80 backdrop-blur-md p-4 sm:p-5 rounded-3xl shadow-sm border border-white/60 hover:bg-white transition-all">
+                      <li key={item.id} className={`backdrop-blur-md p-4 sm:p-5 rounded-3xl shadow-sm border transition-all ${item.is_excluded ? 'bg-amber-50/60 border-amber-100' : 'bg-white/80 border-white/60 hover:bg-white'}`}>
                         <div className="flex justify-between items-start mb-3">
                           <div className="flex items-center gap-3 sm:gap-4">
                             <span className="text-2xl sm:text-3xl bg-gray-100/80 p-2 sm:p-3 rounded-2xl shadow-inner">{getCategoryIcon(item.category)}</span>
@@ -538,7 +559,7 @@ export default function SettlementPage() {
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="font-black text-lg sm:text-xl mb-1 text-slate-700">¥{item.amount.toLocaleString()}</p>
+                            <p className={`font-black text-lg sm:text-xl mb-1 ${item.is_excluded ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`}>¥{item.amount.toLocaleString()}</p>
                             <span className={`text-[10px] sm:text-xs px-2 sm:px-3 py-1 rounded-full font-bold shadow-sm ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-600'}`}>{item.paid_by}</span>
                           </div>
                         </div>
@@ -576,6 +597,17 @@ export default function SettlementPage() {
                           <button onClick={() => setActiveCommentId(isCommentOpen ? null : item.id)} className={`w-8 h-8 flex items-center justify-center rounded-full border transition-colors leading-none ${comments.length > 0 ? 'bg-blue-50 border-blue-200 text-blue-500' : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}>
                             <MessageCircle size={18} strokeWidth={2.5} className={comments.length > 0 ? 'fill-blue-100' : ''} />
                           </button>
+
+                          {/* 自腹にするかは払った本人が決める。相手からは表示だけ */}
+                          {isMe ? (
+                            <button onClick={() => handleToggleExcluded(item)} className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${item.is_excluded ? 'bg-amber-100 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200'}`}>
+                              <Gift size={12} /> {item.is_excluded ? 'おごり' : 'おごりにする'}
+                            </button>
+                          ) : item.is_excluded && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border bg-amber-100 border-amber-200 text-amber-700">
+                              <Gift size={12} /> {item.paid_by}のおごり
+                            </span>
+                          )}
 
                           {isMe && (
                             <div className="ml-auto flex gap-3">
