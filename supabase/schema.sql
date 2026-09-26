@@ -208,3 +208,14 @@ create policy "receipts anon upload" on storage.objects
 drop policy if exists "receipts anon delete" on storage.objects;
 create policy "receipts anon delete" on storage.objects
   for delete to anon using (bucket_id = 'receipts');
+
+-- ------------------------------------------------------------
+-- 8. 分類の統一（2026-09）
+-- ふたり・旅行・個人で別々だった分類を1つにまとめた（app/lib/categories.ts）。
+-- 個人・旅行の「食事」は「外食」、旅行の「観光」は「趣味・レジャー」へ付け替える。
+-- アプリ側でも読み替えているので、実行前でも表示は崩れない。何度実行しても同じ結果になる
+-- ------------------------------------------------------------
+update public.personal_expenses set category = 'eatout' where category = 'meal';
+update public.trip_expenses set category = 'eatout' where category = 'meal';
+update public.trip_expenses set category = 'hobby' where category = 'sightseeing';
+update public.subscriptions set category = 'eatout' where category = 'meal';

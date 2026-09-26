@@ -9,9 +9,9 @@ import SettledChip from '../../components/SettledChip';
 import ReceiptCapture from '../../components/ReceiptCapture';
 import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, ChoiceButton, SettlementCard, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../../components/ui';
 import { Check, Loader2, Paperclip, Pencil, Trash2, CheckCheck } from 'lucide-react';
-import { Trip, TripExpense, TRIP_CATEGORIES, toTripCategory, formatTripPeriod, remainingDays } from '../../lib/trips';
+import { Trip, TripExpense, formatTripPeriod, remainingDays } from '../../lib/trips';
 import { BudgetCard } from '../../components/BudgetCard';
-import { findCategory, sumByCategory } from '../../lib/categories';
+import { findCategory, normalizeCategory, sumByCategory } from '../../lib/categories';
 import { normalizeImage, scanReceipt, uploadReceipt, removeReceipts } from '../../lib/receipt';
 import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from '../../lib/demoData';
 import { useCurrentUser } from '../../lib/useCurrentUser';
@@ -52,7 +52,7 @@ export default function TripDetailPage() {
   const [storeName, setStoreName] = useState('');
   const [amount, setAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(todayYMD());
-  const [category, setCategory] = useState('meal');
+  const [category, setCategory] = useState('eatout');
   const [paidBy, setPaidBy] = useState('');
   const currentPaidBy = paidBy || myUserName;
   const [isExcluded, setIsExcluded] = useState(false);
@@ -145,7 +145,7 @@ export default function TripDetailPage() {
     setEditingId(null);
     setStoreName('');
     setAmount('');
-    setCategory('meal');
+    setCategory('eatout');
     setPaidBy('');
     setIsExcluded(false);
     setPurchaseDate(defaultDateFor(trip));
@@ -173,7 +173,7 @@ export default function TripDetailPage() {
       if (data.store_name) setStoreName(data.store_name);
       if (data.amount) setAmount(String(data.amount));
       if (data.date) setPurchaseDate(data.date);
-      setCategory(toTripCategory(data.category));
+      setCategory(normalizeCategory(data.category));
     } catch (err) {
       console.error('Scan error:', err);
     } finally {
@@ -443,7 +443,7 @@ export default function TripDetailPage() {
 
           <BudgetCard budget={trip.budget} spent={spentTotal} days={remainingDays(trip, todayYMD())} onEdit={handleBudgetClick} />
 
-          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(TRIP_CATEGORIES, included)} />
+          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(included)} />
 
           {/* 入力フォーム */}
           <div ref={formRef} className="scroll-mt-4 mb-8">
@@ -467,7 +467,7 @@ export default function TripDetailPage() {
                   </Field>
                 </div>
                 <Field label="カテゴリ">
-                  <CategoryPicker categories={TRIP_CATEGORIES} value={category} onChange={setCategory} />
+                  <CategoryPicker context="trip" value={category} onChange={setCategory} />
                 </Field>
                 <Field label="支払った人">
                   <div className="grid grid-cols-2 gap-2">
@@ -500,7 +500,7 @@ export default function TripDetailPage() {
             <ul className="space-y-3">
               {expenses.map((item) => {
                 const isMe = item.paid_by === myUserName;
-                const cat = findCategory(TRIP_CATEGORIES, item.category);
+                const cat = findCategory(item.category);
                 return (
                   <li key={item.id}>
                     <Card className={`p-4 ${item.is_excluded ? '!bg-amber-50/70 !border-amber-100' : item.is_settled ? '!bg-emerald-50/50 !border-emerald-100' : ''} ${editingId === item.id ? 'ring-2 ring-sky-300' : ''}`}>
