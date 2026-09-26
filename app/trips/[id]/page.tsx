@@ -4,8 +4,13 @@ import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import Modal from '../../components/Modal';
 import ExcludedToggle from '../../components/ExcludedToggle';
-import { ArrowLeft, Camera, Upload, Check, Loader2, X, Paperclip, Send, Clock, CheckCircle2, ChevronDown, ChevronUp, HelpCircle, Lock, Pencil, Trash2, Gift } from 'lucide-react';
-import { Trip, TripExpense, TRIP_CATEGORIES, getTripCategory, toTripCategory, formatTripPeriod } from '../../lib/trips';
+import { ExcludedChip } from '../../components/ExcludedToggle';
+import SettledChip from '../../components/SettledChip';
+import ReceiptCapture from '../../components/ReceiptCapture';
+import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, ChoiceButton, SettlementCard, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../../components/ui';
+import { Check, Loader2, Paperclip, Pencil, Trash2, CheckCheck } from 'lucide-react';
+import { Trip, TripExpense, TRIP_CATEGORIES, toTripCategory, formatTripPeriod } from '../../lib/trips';
+import { findCategory, sumByCategory } from '../../lib/categories';
 import { normalizeImage, scanReceipt, uploadReceipt, removeReceipts } from '../../lib/receipt';
 import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from '../../lib/demoData';
 import { useCurrentUser } from '../../lib/useCurrentUser';
@@ -28,8 +33,6 @@ export default function TripDetailPage() {
   const params = useParams<{ id: string }>();
   const tripId = Number(params.id);
 
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
   const { isDemoMode, myUserName } = useCurrentUser();
@@ -54,7 +57,6 @@ export default function TripDetailPage() {
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const [showDetails, setShowDetails] = useState(false);
 
   const [modalConfig, setModalConfig] = useState({
     isOpen: false,
@@ -131,8 +133,6 @@ export default function TripDetailPage() {
   const clearImage = () => {
     setPreviewUrl(null);
     setFileToUpload(null);
-    if (cameraInputRef.current) cameraInputRef.current.value = '';
-    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   const resetForm = () => {
@@ -146,9 +146,7 @@ export default function TripDetailPage() {
     clearImage();
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFile = async (file: File) => {
     setIsScanning(true);
 
     let processFile: File;
@@ -233,16 +231,31 @@ export default function TripDetailPage() {
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handleToggleExcluded = async (item: TripExpense) => {
+  // おごり・精算済みの切り替え。画面を先に変えて、保存に失敗したら戻す
+  const handleToggleFlag = async (item: TripExpense, key: 'is_excluded' | 'is_settled') => {
     if (checkDemo()) return;
-    const next = !item.is_excluded;
-    setExpenses((prev) => prev.map((e) => (e.id === item.id ? { ...e, is_excluded: next } : e)));
-    const { error } = await supabase.from('trip_expenses').update({ is_excluded: next }).eq('id', item.id);
+    const next = !item[key];
+    setExpenses((prev) => prev.map((e) => (e.id === item.id ? { ...e, [key]: next } : e)));
+    const { error } = await supabase.from('trip_expenses').update({ [key]: next }).eq('id', item.id);
     if (error) {
       console.error(error);
-      setExpenses((prev) => prev.map((e) => (e.id === item.id ? { ...e, is_excluded: !next } : e)));
+      setExpenses((prev) => prev.map((e) => (e.id === item.id ? { ...e, [key]: !next } : e)));
       alert('更新に失敗しました');
     }
+  };
+
+  const handleSettleAllClick = () => {
+    if (checkDemo()) return;
+    const ids = expenses.filter((e) => !e.is_settled).map((e) => e.id);
+    setModalConfig({
+      isOpen: true, type: 'confirm', title: 'まとめて精算済みにする', message: `未精算の記録 ${ids.length}件を、すべて精算済みにします。`, confirmText: '精算済みにする', defaultValue: '',
+      onConfirm: async () => {
+        closeModal();
+        const { error } = await supabase.from('trip_expenses').update({ is_settled: true }).in('id', ids);
+        if (error) { console.error(error); alert('更新に失敗しました'); return; }
+        setExpenses((prev) => prev.map((e) => (ids.includes(e.id) ? { ...e, is_settled: true } : e)));
+      },
+    });
   };
 
   const handleDeleteClick = (item: TripExpense) => {
@@ -329,272 +342,167 @@ export default function TripDetailPage() {
   };
 
   // ---------- 集計 ----------
-  // おごり(is_excluded)は払った人の自腹扱いなので、割り勘には入れない
+  // おごり(is_excluded)は払った人の自腹扱いなので、割り勘には入れない。
+  // 精算済み(is_settled)は途中精算で片付いた分なので、残りの精算額には入れない。
+  // カテゴリ別の集計は「使ったお金」なので精算済みも含める。
   const included = expenses.filter((e) => !e.is_excluded);
   const excluded = expenses.filter((e) => e.is_excluded);
-  const totalMe = included.filter((e) => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
-  const totalPartner = included.filter((e) => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
+  const unsettled = included.filter((e) => !e.is_settled);
+  const settled = included.filter((e) => e.is_settled);
+  const totalMe = unsettled.filter((e) => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
+  const totalPartner = unsettled.filter((e) => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
   const totalAmount = totalMe + totalPartner;
   const excludedAmount = excluded.reduce((sum, e) => sum + e.amount, 0);
+  const settledAmount = settled.reduce((sum, e) => sum + e.amount, 0);
   const splitAmount = Math.round(totalAmount / 2);
   const balance = totalMe - splitAmount;
-  const isPayer = balance < 0;
-  const isReceiver = balance > 0;
-  const isSettled = !!trip?.is_received;
 
-  const categoryTotals = TRIP_CATEGORIES
-    .map((cat) => ({ ...cat, value: included.filter((e) => (e.category || 'other') === cat.id).reduce((sum, e) => sum + e.amount, 0) }))
-    .filter((c) => c.value > 0);
-
-  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
-
-  const pageBg = isDemoMode ? 'bg-orange-50/50' : 'bg-gradient-to-br from-sky-50 to-slate-100';
+  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-slate-50"></div>;
 
   if (notFound) {
     return (
-      <div className={`px-4 py-6 max-w-md mx-auto min-h-screen text-center ${pageBg}`}>
-        <p className="mt-24 text-4xl mb-3">🧳</p>
-        <p className="font-bold text-slate-500 mb-6">旅行が見つかりませんでした</p>
-        <button onClick={() => router.push('/trips')} className="text-sm font-bold text-slate-600 bg-white border border-slate-200 px-5 py-2.5 rounded-full shadow-sm">旅行一覧へ</button>
-      </div>
+      <PageShell isDemoMode={isDemoMode} tone="trip">
+        <PageHeader title="旅行" back={{ href: '/trips', label: '旅行一覧' }} />
+        <EmptyState icon="🧳" title="旅行が見つかりませんでした" description="削除されたか、URLが間違っている可能性があります" />
+      </PageShell>
     );
   }
 
   return (
-    <div className={`px-4 py-6 sm:p-8 max-w-md mx-auto min-h-screen text-gray-700 relative pb-32 font-medium transition-colors duration-500 ${pageBg}`}>
-      {isDemoMode && (
-        <div className="fixed top-0 left-0 w-full bg-orange-400 text-white text-xs font-bold text-center py-1 z-50 shadow-md">
-          🚧 DEMO MODE - データは保存されません
-        </div>
-      )}
-
+    <PageShell isDemoMode={isDemoMode} tone="trip">
       <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText={modalConfig.confirmText} defaultValue={modalConfig.defaultValue} />
 
-      <div className="mt-4 mb-6">
-        <button onClick={() => router.push('/trips')} className="text-xs font-bold text-slate-500 bg-white/80 backdrop-blur-md border border-white/40 px-3 py-1.5 rounded-full hover:bg-white transition-all shadow-sm flex items-center gap-1 mb-4">
-          <ArrowLeft size={14} /> 旅行一覧
-        </button>
-        {trip && (
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-700 tracking-tight break-words flex items-center gap-2 flex-wrap">
-                {trip.name}
-                {isDemoMode && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full border border-orange-200">DEMO</span>}
-              </h1>
-              <p className="text-xs font-mono font-bold text-slate-400 mt-1">{formatTripPeriod(trip)}</p>
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <button onClick={handleRenameClick} className="p-2 rounded-full text-slate-400 hover:text-sky-500 hover:bg-white transition" title="旅行名を変更"><Pencil size={16} /></button>
-              <button onClick={handleDeleteTripClick} className="p-2 rounded-full text-slate-400 hover:text-rose-500 hover:bg-white transition" title="旅行を削除"><Trash2 size={16} /></button>
-            </div>
-          </div>
+      <PageHeader
+        title={trip?.name ?? '　'}
+        subtitle={trip ? formatTripPeriod(trip) : undefined}
+        isDemoMode={isDemoMode}
+        back={{ href: '/trips', label: '旅行一覧' }}
+        actions={trip && (
+          <>
+            <button onClick={handleRenameClick} className={buttonClass.icon} aria-label="旅行名を変更"><Pencil size={17} /></button>
+            <button onClick={handleDeleteTripClick} className={`${buttonClass.icon} hover:!text-rose-500`} aria-label="旅行を削除"><Trash2 size={17} /></button>
+          </>
         )}
-      </div>
+      />
 
-      {loading || !trip ? (
-        <div className="text-center py-12 text-slate-600 font-bold animate-pulse">読み込み中...</div>
-      ) : (
+      {loading || !trip ? <Loading /> : (
         <>
-          {/* 精算カード */}
-          <div className={`p-6 sm:p-8 rounded-3xl text-white shadow-[0_10px_40px_rgb(0,0,0,0.15)] border border-white/20 mb-6 transition-all relative overflow-hidden ${isSettled ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : balance === 0 ? 'bg-gradient-to-br from-gray-500 to-gray-600' : balance > 0 ? 'bg-gradient-to-br from-slate-500 to-slate-600' : 'bg-gradient-to-br from-rose-400 to-rose-500'}`}>
-            <div className="absolute inset-0 bg-white/10 mix-blend-overlay pointer-events-none"></div>
+          <SettlementCard
+            balance={balance}
+            isPaid={trip.is_paid}
+            isReceived={trip.is_received}
+            isDemoMode={isDemoMode}
+            caption="この旅行の精算"
+            onStatusClick={handleStatusClick}
+            zeroLabel={unsettled.length === 0 && settled.length > 0 ? '精算済み' : '精算なし'}
+            rows={[
+              { label: settled.length > 0 ? '未精算の割り勘対象' : '割り勘の対象', value: totalAmount },
+              { label: '1人あたり (÷2)', value: splitAmount },
+              { label: 'あなたの立替', value: totalMe },
+              { label: '相手の立替', value: totalPartner },
+              { label: '差額', value: balance, signed: true, highlight: true },
+            ]}
+            notes={<>
+              {settled.length > 0 && <p>※ 精算済み {settled.length}件（{settledAmount.toLocaleString()}円）は計算に含めていません</p>}
+              {excluded.length > 0 && <p>※ おごり {excluded.length}件（{excludedAmount.toLocaleString()}円）は計算に含めていません</p>}
+            </>}
+          />
 
-            <div className="relative z-10 mb-4 flex flex-col items-center">
-              {isSettled ? (
-                <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full backdrop-blur-md mb-2">
-                  <CheckCircle2 size={20} className="text-white" />
-                  <span className="font-bold">精算完了</span>
-                  {isReceiver && (
-                    <button onClick={() => handleStatusClick('received')} className="ml-2 bg-white/20 p-1 rounded-full hover:bg-white/40">
-                      {isDemoMode ? <Lock size={14} /> : <X size={14} />}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {isPayer && (
-                    <button onClick={() => handleStatusClick('paid')} className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-2 font-bold transition-all ${trip.is_paid ? 'bg-white/30 text-white' : 'bg-white text-rose-500 shadow-lg'} ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}>
-                      {trip.is_paid ? (<><Clock size={18} /> <span className="whitespace-nowrap">支払い報告済み</span></>) : (<><Send size={18} /> 支払いを完了する</>)}
-                    </button>
-                  )}
-                  {isReceiver && (
-                    <div className="flex flex-col items-center gap-2">
-                      {trip.is_paid && <span className="text-xs bg-white/20 px-3 py-1 rounded-full animate-pulse">相手が「支払い済み」にしました</span>}
-                      <button onClick={() => handleStatusClick('received')} className={`flex items-center gap-2 bg-white text-slate-600 px-6 py-3 rounded-full shadow-lg font-bold hover:bg-slate-50 transition-all active:scale-95 ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}>
-                        <CheckCircle2 size={20} className="text-emerald-500" /> <span className="whitespace-nowrap">受け取り完了</span>
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <p className="text-xs sm:text-sm font-bold opacity-90 mb-2 relative z-10 text-center">この旅行の精算</p>
-            <h2 className="text-2xl sm:text-4xl font-black mb-4 relative z-10 drop-shadow-sm leading-tight text-center">
-              {balance === 0 ? '精算なし' : (
-                <>相手{balance > 0 ? 'から' : 'へ'}<br className="sm:hidden" /><span className="mx-1 sm:mx-3 underline underline-offset-8 decoration-white/50">{Math.abs(balance).toLocaleString()}</span>円{balance > 0 ? 'もらう' : '払う'}</>
-              )}
-            </h2>
-
-            <div className="mt-4 bg-black/20 rounded-xl overflow-hidden relative z-10">
-              <button onClick={() => setShowDetails(!showDetails)} className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold hover:bg-white/5 transition-colors">
-                <span className="flex items-center gap-2"><HelpCircle size={14} /> 計算の内訳を見る</span>
-                {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-              {showDetails && (
-                <div className="px-4 pb-4 pt-1 text-xs space-y-2 opacity-90 border-t border-white/10">
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>割り勘の対象</span><span className="font-mono">{totalAmount.toLocaleString()} 円</span></div>
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>1人あたり (÷2)</span><span className="font-mono">{splitAmount.toLocaleString()} 円</span></div>
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>あなたの立替済</span><span className="font-mono">{totalMe.toLocaleString()} 円</span></div>
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>相手の立替済</span><span className="font-mono">{totalPartner.toLocaleString()} 円</span></div>
-                  <div className="flex justify-between py-1 text-emerald-200"><span>差額</span><span className="font-mono">{balance > 0 ? '+' : ''}{balance.toLocaleString()} 円</span></div>
-                  {excluded.length > 0 && (
-                    <div className="pt-2 text-[10px] text-center opacity-80">※ おごり {excluded.length}件（{excludedAmount.toLocaleString()}円）は計算に含めていません</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* カテゴリ別 */}
-          {categoryTotals.length > 0 && (
-            <div className="bg-white/70 backdrop-blur-xl p-5 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-6">
-              <div className="flex items-baseline justify-between mb-3">
-                <h3 className="font-bold text-sm text-slate-700">カテゴリ別</h3>
-                <span className="text-xs font-bold text-slate-400">割り勘対象 ¥{totalAmount.toLocaleString()}</span>
-              </div>
-              <ul className="space-y-2">
-                {categoryTotals.map((cat) => (
-                  <li key={cat.id} className="flex items-center gap-3 text-xs">
-                    <span className="w-16 shrink-0 font-bold text-slate-500">{cat.icon} {cat.label}</span>
-                    <span className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden"><span className="block h-full bg-sky-400 rounded-full" style={{ width: `${(cat.value / totalAmount) * 100}%` }}></span></span>
-                    <span className="w-20 shrink-0 text-right font-mono font-bold text-slate-600">¥{cat.value.toLocaleString()}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(TRIP_CATEGORIES, included)} />
 
           {/* 入力フォーム */}
-          <div ref={formRef} className="scroll-mt-4 bg-white/70 backdrop-blur-xl p-5 sm:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-8 relative overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-black text-slate-700 flex items-center gap-2"><span className="w-1.5 h-5 bg-sky-500 rounded-full"></span>{editingId ? '記録の編集' : '支出の記録'}</h2>
-              {editingId && <button onClick={resetForm} className="text-xs font-bold text-slate-400 hover:text-slate-600">編集をやめる</button>}
-            </div>
+          <div ref={formRef} className="scroll-mt-4 mb-8">
+            <Card className={`p-5 ${editingId ? 'ring-2 ring-sky-300' : ''}`}>
+              <SectionTitle tone="trip" right={editingId && <button onClick={resetForm} className="text-xs font-bold text-slate-400 hover:text-slate-600">編集をやめる</button>}>
+                {editingId ? '記録の編集' : '支出の記録'}
+              </SectionTitle>
 
-            <input type="file" accept="image/*" capture="environment" ref={cameraInputRef} onChange={handleFileChange} className="hidden" />
-            <input type="file" accept="image/*" ref={galleryInputRef} onChange={handleFileChange} className="hidden" />
+              <ReceiptCapture previewUrl={previewUrl} isScanning={isScanning} onFile={handleFile} onClear={clearImage} compact />
 
-            {previewUrl ? (
-              <div className="relative mb-4">
-                <img src={previewUrl} alt="Preview" className="w-full h-32 object-cover rounded-2xl border border-white/60" />
-                <button onClick={clearImage} className="absolute top-2 right-2 bg-black/50 text-white/90 p-1.5 rounded-full hover:bg-rose-500 transition-colors" title="画像を削除"><X size={16} strokeWidth={2.5} /></button>
-              </div>
-            ) : (
-              <div className="flex gap-2 mb-4">
-                <button onClick={() => cameraInputRef.current?.click()} className="flex-1 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-bold text-slate-600 flex items-center justify-center gap-2 hover:bg-slate-50 transition-all"><Camera size={14} className="text-sky-500" /> レシート撮影</button>
-                <button onClick={() => galleryInputRef.current?.click()} className="flex-1 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-bold text-slate-600 flex items-center justify-center gap-2 hover:bg-slate-50 transition-all"><Upload size={14} className="text-slate-500" /> 画像を選択</button>
-              </div>
-            )}
-
-            {isScanning && (
-              <div className="absolute inset-0 bg-white/90 backdrop-blur-md flex flex-col items-center justify-center z-10">
-                <Loader2 className="animate-spin text-sky-500 mb-3" size={32} />
-                <p className="font-bold text-slate-600 text-sm animate-pulse">AIが解析中...</p>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">店名 / 内容</label>
-                <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="新幹線, 旅館など" className="w-full p-3 rounded-2xl bg-white/60 border border-slate-200/60 focus:outline-none focus:ring-2 focus:ring-sky-100 focus:bg-white font-bold text-slate-700 placeholder:text-slate-300 shadow-sm text-sm sm:text-base" />
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1 min-w-0">
-                  <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">金額 (円)</label>
-                  <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="w-full p-3 rounded-2xl bg-white/60 border border-slate-200/60 focus:outline-none focus:ring-2 focus:ring-sky-100 focus:bg-white font-black text-lg text-slate-700 placeholder:text-slate-300 text-right shadow-sm h-[52px]" />
+              <div className="space-y-4">
+                <Field label="店名 / 内容">
+                  <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="新幹線, 旅館など" className={inputClass} />
+                </Field>
+                <div className="flex gap-3">
+                  <Field label="金額 (円)" className="flex-1 min-w-0">
+                    <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={`${inputClass} text-right text-xl font-black tabular`} />
+                  </Field>
+                  <Field label="日付" className="w-[46%] shrink-0">
+                    <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className={`${inputClass} !px-3 text-sm h-[56px]`} />
+                  </Field>
                 </div>
-                <div className="w-[38%] min-w-[120px]">
-                  <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">日付</label>
-                  <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="w-full p-3 rounded-2xl bg-white/60 border border-slate-200/60 focus:outline-none focus:ring-2 focus:ring-sky-100 focus:bg-white font-bold text-slate-600 text-xs h-[52px] shadow-sm text-center" />
-                </div>
+                <Field label="カテゴリ">
+                  <CategoryPicker categories={TRIP_CATEGORIES} value={category} onChange={setCategory} />
+                </Field>
+                <Field label="支払った人">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[myUserName, partnerName].filter(Boolean).map((name) => (
+                      <ChoiceButton key={name} selected={currentPaidBy === name} onClick={() => setPaidBy(name)} className="py-2.5 text-sm font-bold truncate px-2">
+                        {name}{name === myUserName && '（自分）'}
+                      </ChoiceButton>
+                    ))}
+                  </div>
+                </Field>
+                <ExcludedToggle value={isExcluded} onChange={setIsExcluded} />
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">カテゴリ</label>
-                <div className="grid grid-cols-6 gap-1.5">
-                  {TRIP_CATEGORIES.map((cat) => (
-                    <button key={cat.id} onClick={() => setCategory(cat.id)} className={`flex flex-col items-center justify-center py-2 rounded-2xl border transition-all active:scale-95 ${category === cat.id ? 'bg-slate-700 text-white border-slate-700 shadow-md' : 'bg-white/60 border-transparent text-slate-400 hover:bg-white'}`}>
-                      <span className="text-lg mb-0.5">{cat.icon}</span>
-                      <span className={`text-[9px] font-bold whitespace-nowrap ${category === cat.id ? 'text-white' : 'text-slate-400'}`}>{cat.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">支払った人</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[myUserName, partnerName].filter(Boolean).map((name) => (
-                    <button key={name} onClick={() => setPaidBy(name)} className={`py-2.5 rounded-2xl border text-sm font-bold transition-all truncate px-2 ${currentPaidBy === name ? 'bg-slate-700 text-white border-slate-700 shadow-md' : 'bg-white/60 border-slate-200/60 text-slate-500 hover:bg-white'}`}>
-                      {name}{name === myUserName && '（自分）'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <ExcludedToggle value={isExcluded} onChange={setIsExcluded} />
-            </div>
 
-            <button onClick={handleSave} disabled={isSaving} className="mt-6 w-full py-3.5 bg-slate-800 text-white font-black text-base rounded-2xl shadow-lg shadow-slate-300 hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
-              {isSaving ? <Loader2 className="animate-spin" /> : <Check strokeWidth={3} />}<span>{editingId ? '更新する' : '記録する'}</span>
-            </button>
+              <button onClick={handleSave} disabled={isSaving} className={`${buttonClass.primary} w-full mt-6 py-4 text-base`}>
+                {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Check strokeWidth={3} size={20} />}{editingId ? '更新する' : '記録する'}
+              </button>
+            </Card>
           </div>
 
           {/* 履歴 */}
-          <div>
-            <h3 className="font-bold mb-4 text-gray-700 ml-2 text-sm sm:text-base">この旅行の記録 ({expenses.length}件)</h3>
-            {expenses.length === 0 ? (
-              <p className="text-center text-gray-500 font-bold text-sm py-12 bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40">まだ記録がありません</p>
-            ) : (
-              <ul className="space-y-3">
-                {expenses.map((item) => {
-                  const isMe = item.paid_by === myUserName;
-                  const cat = getTripCategory(item.category);
-                  return (
-                    <li key={item.id} className={`p-4 rounded-3xl shadow-sm border transition-all ${item.is_excluded ? 'bg-amber-50/60 border-amber-100' : 'bg-white/80 border-white/60'} ${editingId === item.id ? 'ring-2 ring-sky-300' : ''}`}>
+          <div className="flex items-center justify-between gap-3 mb-3 ml-1">
+            <h3 className="font-black text-slate-800 flex items-baseline gap-2 min-w-0 whitespace-nowrap">この旅行の記録<span className="text-xs font-bold text-slate-400">{expenses.length}件</span></h3>
+            {expenses.some((e) => !e.is_settled) && (
+              <button onClick={handleSettleAllClick} className="shrink-0 whitespace-nowrap flex items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-full hover:bg-emerald-50 transition-colors"><CheckCheck size={13} strokeWidth={2.5} />まとめて精算済みに</button>
+            )}
+          </div>
+          {expenses.length === 0 ? (
+            <EmptyState icon="🧾" title="まだ記録がありません" description="レシートを撮るか、上のフォームから入力してください" />
+          ) : (
+            <ul className="space-y-3">
+              {expenses.map((item) => {
+                const isMe = item.paid_by === myUserName;
+                const cat = findCategory(TRIP_CATEGORIES, item.category);
+                return (
+                  <li key={item.id}>
+                    <Card className={`p-4 ${item.is_excluded ? '!bg-amber-50/70 !border-amber-100' : item.is_settled ? '!bg-emerald-50/50 !border-emerald-100' : ''} ${editingId === item.id ? 'ring-2 ring-sky-300' : ''}`}>
                       <div className="flex justify-between items-start gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-2xl bg-gray-100/80 p-2 rounded-2xl shadow-inner shrink-0">{cat.icon}</span>
+                        <div className="flex items-center gap-2.5 min-[360px]:gap-3 min-w-0">
+                          <span className="text-xl w-10 h-10 min-[360px]:text-2xl min-[360px]:w-12 min-[360px]:h-12 shrink-0 flex items-center justify-center bg-slate-100 rounded-2xl">{cat.icon}</span>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-black text-gray-800 text-base line-clamp-1">{item.store_name || '店名なし'}</p>
+                            <div className="flex items-start gap-1.5">
+                              <p className="font-black text-slate-800 leading-snug line-clamp-2 [overflow-wrap:anywhere] [line-break:strict]">{item.store_name || '店名なし'}</p>
                               {item.receipt_url && (
-                                <a href={item.receipt_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 p-1 bg-blue-50 rounded-full transition-colors shrink-0"><Paperclip size={14} /></a>
+                                <a href={item.receipt_url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-slate-700 shrink-0" aria-label="レシート画像を開く"><Paperclip size={14} /></a>
                               )}
                             </div>
-                            <p className="text-gray-400 text-[10px] font-mono font-bold">{formatYMD(item.purchase_date)}</p>
+                            <p className="text-slate-400 text-[11px] font-bold tabular">{formatYMD(item.purchase_date)}</p>
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className={`font-black text-lg mb-1 ${item.is_excluded ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`}>¥{item.amount.toLocaleString()}</p>
-                          <span className={`text-[10px] px-2 py-1 rounded-full font-bold shadow-sm ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-600'}`}>{item.paid_by}</span>
+                          <p className={`font-black text-lg tabular ${item.is_excluded ? 'text-slate-400 line-through decoration-slate-300' : item.is_settled ? 'text-slate-400' : 'text-slate-800'}`}>¥{item.amount.toLocaleString()}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-500'}`}>{item.paid_by}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 mt-3">
-                        <button onClick={() => handleToggleExcluded(item)} className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${item.is_excluded ? 'bg-amber-100 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200'}`}>
-                          <Gift size={12} /> {item.is_excluded ? `${item.paid_by}のおごり` : 'おごりにする'}
-                        </button>
-                        <div className="ml-auto flex gap-3">
-                          <button onClick={() => handleEditClick(item)} className="text-xs font-bold text-slate-400 hover:text-blue-500 transition-colors">編集</button>
-                          <button onClick={() => handleDeleteClick(item)} className="text-xs font-bold text-rose-400 hover:text-rose-600 transition-colors">削除</button>
+                      <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-slate-100">
+                        <SettledChip settled={item.is_settled} onClick={() => handleToggleFlag(item, 'is_settled')} />
+                        <ExcludedChip excluded={item.is_excluded} onClick={() => handleToggleFlag(item, 'is_excluded')} />
+                        <div className="ml-auto flex">
+                          <button onClick={() => handleEditClick(item)} className={buttonClass.icon} aria-label="編集"><Pencil size={15} /></button>
+                          <button onClick={() => handleDeleteClick(item)} className={`${buttonClass.icon} hover:!text-rose-500`} aria-label="削除"><Trash2 size={15} /></button>
                         </div>
                       </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

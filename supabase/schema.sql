@@ -35,6 +35,10 @@ create table if not exists public.expenses (
 alter table public.expenses
   add column if not exists is_excluded boolean default false not null;
 
+-- 精算済みの印。途中まで精算したとき、済んだ記録を精算額の計算から外す
+alter table public.expenses
+  add column if not exists is_settled boolean default false not null;
+
 -- 精算画面は「月初〜月末」で絞り込むのでインデックスを張る
 create index if not exists expenses_purchase_date_idx
   on public.expenses (purchase_date desc);
@@ -77,6 +81,10 @@ create table if not exists public.trip_expenses (
   receipt_url text,
   is_excluded boolean default false not null -- おごり等。記録は残すが割り勘には入れない
 );
+
+-- 精算済みの印。途中まで精算したとき、済んだ記録を精算額の計算から外す
+alter table public.trip_expenses
+  add column if not exists is_settled boolean default false not null;
 
 create index if not exists trip_expenses_trip_id_idx
   on public.trip_expenses (trip_id);

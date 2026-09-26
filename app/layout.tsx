@@ -9,11 +9,14 @@ const mPlusRounded1c = M_PLUS_Rounded_1c({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#f8fafc",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // ノッチ・ホームバーのある iPhone で画面いっぱいに描き、
+  // 余白は env(safe-area-inset-*) で自前で取る（PageShell と下のタブ）
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {

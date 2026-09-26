@@ -3,11 +3,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import ExcludedToggle from './ExcludedToggle';
+import { Field, CategoryPicker, ChoiceButton, buttonClass, inputClass } from './ui';
+import { DAILY_CATEGORIES } from '../lib/categories';
+
+type EditableExpense = { id: number; store_name: string; purchase_date: string; amount: number; category: string | null; paid_by: string; is_excluded?: boolean };
 
 type EditModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  expense: any;
+  expense: EditableExpense | null;
   onUpdate: () => void;
 };
 
@@ -64,7 +68,7 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
         paid_by: formData.paid_by,
         is_excluded: formData.is_excluded,
       })
-      .eq('id', expense.id);
+      .eq('id', expense!.id);
 
     setSaving(false);
 
@@ -78,93 +82,44 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
 
   if (!isOpen) return null;
 
-  const categories = [
-    { id: 'food', label: '食費', icon: '🥦' },
-    { id: 'daily', label: '日用品', icon: '🧻' },
-    { id: 'eatout', label: '外食', icon: '🍻' },
-    { id: 'transport', label: '交通費', icon: '🚃' },
-    { id: 'other', label: 'その他', icon: '📦' },
-  ];
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity overflow-y-auto">
-      <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-xl animate-in zoom-in-95 duration-200 max-h-full overflow-y-auto">
-        <h3 className="text-xl font-bold mb-6 text-gray-800">記録の編集</h3>
-        
-        <div className="space-y-6">
-          <div>
-            <label className="text-sm text-gray-500 block mb-1">店名</label>
-            <input
-              value={formData.store_name}
-              onChange={(e) => setFormData({ ...formData, store_name: e.target.value })}
-              className="w-full border-b border-gray-100 py-2 font-bold focus:outline-none focus:border-blue-500 transition-colors"
-            />
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md max-h-[92vh] overflow-y-auto shadow-2xl animate-in" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white/95 backdrop-blur px-6 pt-5 pb-3 flex items-center justify-between border-b border-slate-100">
+          <h3 className="text-lg font-black text-slate-800">記録の編集</h3>
+          <button onClick={onClose} className="text-xs font-bold text-slate-400 hover:text-slate-600">閉じる</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <Field label="店名 / 内容">
+            <input value={formData.store_name} onChange={(e) => setFormData({ ...formData, store_name: e.target.value })} className={inputClass} />
+          </Field>
+          <div className="flex gap-3">
+            <Field label="金額 (円)" className="flex-1 min-w-0">
+              <input type="number" inputMode="numeric" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })} className={`${inputClass} text-right text-lg font-black tabular`} />
+            </Field>
+            <Field label="日付" className="w-[46%] shrink-0">
+              <input type="date" value={formData.purchase_date} onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })} className={`${inputClass} !px-3 text-sm h-[54px]`} />
+            </Field>
           </div>
-          <div>
-            <label className="text-sm text-gray-500 block mb-1">日付</label>
-            <input
-              type="date"
-              value={formData.purchase_date}
-              onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })}
-              className="w-full border-b border-gray-100 py-2 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-gray-500 block mb-1">金額</label>
-            <div className="flex items-end">
-              <span className="text-lg mr-2">¥</span>
-              <input
-                type="number"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
-                className="w-full border-b border-gray-100 py-2 text-2xl font-bold text-blue-600 focus:outline-none focus:border-blue-500 transition-colors"
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label className="text-sm text-gray-500 block mb-3">カテゴリ</label>
-            <div className="flex flex-wrap gap-3">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setFormData({ ...formData, category: cat.id })}
-                  className={`px-3 py-1.5 rounded-full text-sm font-bold border transition ${
-                    formData.category === cat.id ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  {cat.icon} {cat.label}
-                </button>
+          <Field label="カテゴリ">
+            <CategoryPicker categories={DAILY_CATEGORIES} value={formData.category} onChange={(category) => setFormData({ ...formData, category })} />
+          </Field>
+          <Field label="支払った人">
+            <div className="grid grid-cols-2 gap-2">
+              {users.map((u) => (
+                <ChoiceButton key={u.id} selected={formData.paid_by === u.name} onClick={() => setFormData({ ...formData, paid_by: u.name })} className="py-2.5 text-sm font-bold truncate px-2">
+                  {u.name}
+                </ChoiceButton>
               ))}
             </div>
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-500 block mb-3">支払った人</label>
-            <div className="relative">
-              <select
-                value={formData.paid_by}
-                onChange={(e) => setFormData({ ...formData, paid_by: e.target.value })}
-                className="w-full p-3 bg-gray-50 border-none rounded-xl font-bold appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-              >
-                {users.map((u) => (
-                  <option key={u.id} value={u.name}>{u.name}</option>
-                ))}
-              </select>
-               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
-                  <svg className="fill-current h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-              </div>
-            </div>
-          </div>
-
+          </Field>
           <ExcludedToggle value={formData.is_excluded} onChange={(v) => setFormData({ ...formData, is_excluded: v })} />
         </div>
 
-        <div className="flex gap-4 mt-8">
-          <button onClick={onClose} className="flex-1 py-4 bg-white border border-gray-200 rounded-xl font-bold text-gray-600 hover:bg-gray-50 transition">キャンセル</button>
-          <button onClick={handleSave} disabled={saving} className="flex-1 py-4 bg-blue-600 rounded-xl font-bold text-white shadow-md hover:bg-blue-700 transition">
-            {saving ? '保存中...' : '更新'}
-          </button>
+        <div className="flex gap-3 px-6 pt-1 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6">
+          <button onClick={onClose} className={`${buttonClass.secondary} flex-1 py-3.5`}>キャンセル</button>
+          <button onClick={handleSave} disabled={saving} className={`${buttonClass.primary} flex-1 py-3.5`}>{saving ? '保存中...' : '更新する'}</button>
         </div>
       </div>
     </div>

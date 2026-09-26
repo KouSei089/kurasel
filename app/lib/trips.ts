@@ -1,3 +1,5 @@
+import type { Category } from './categories';
+
 // 旅行機能で共通の型と定義。
 // 日常の支出(expenses)とはテーブルもカテゴリも分けている。
 
@@ -21,20 +23,18 @@ export type TripExpense = {
   category: string | null;
   receipt_url: string | null;
   is_excluded: boolean; // おごり等で割り勘の対象外
+  is_settled: boolean; // 途中精算で精算済みにした記録
   created_at: string;
 };
 
-export const TRIP_CATEGORIES = [
-  { id: 'transport', icon: '🚄', label: '交通' },
-  { id: 'lodging', icon: '🏨', label: '宿泊' },
-  { id: 'meal', icon: '🍽️', label: '食事' },
-  { id: 'sightseeing', icon: '🎡', label: '観光' },
-  { id: 'souvenir', icon: '🎁', label: 'お土産' },
-  { id: 'other', icon: '📦', label: 'その他' },
+export const TRIP_CATEGORIES: Category[] = [
+  { id: 'transport', icon: '🚄', label: '交通', bar: 'bg-sky-400' },
+  { id: 'lodging', icon: '🏨', label: '宿泊', bar: 'bg-indigo-400' },
+  { id: 'meal', icon: '🍽️', label: '食事', bar: 'bg-rose-400' },
+  { id: 'sightseeing', icon: '🎡', label: '観光', bar: 'bg-emerald-400' },
+  { id: 'souvenir', icon: '🎁', label: 'お土産', bar: 'bg-amber-400' },
+  { id: 'other', icon: '📦', label: 'その他', bar: 'bg-slate-400' },
 ];
-
-export const getTripCategory = (id: string | null) =>
-  TRIP_CATEGORIES.find((c) => c.id === id) ?? TRIP_CATEGORIES[TRIP_CATEGORIES.length - 1];
 
 // レシート解析は日常用のカテゴリで返ってくるので、旅行用に読み替える
 export const toTripCategory = (dailyCategory?: string) => {

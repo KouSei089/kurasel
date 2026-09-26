@@ -1,14 +1,15 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { useRouter } from 'next/navigation';
 import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
-import CategoryChart from '../components/CategoryChart';
-import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronUp, HelpCircle, ArrowLeft, CheckCircle2, Clock, Lock, Gift } from 'lucide-react';
+import { ExcludedChip } from '../components/ExcludedToggle';
+import SettledChip from '../components/SettledChip';
+import { PageShell, PageHeader, Card, SettlementCard, CategoryBreakdown, Toggle, EmptyState, Loading, buttonClass } from '../components/ui';
+import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronLeft, ChevronRight, CheckCheck } from 'lucide-react';
 import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
-
-// Gemini APIの初期化
+import { DAILY_CATEGORIES, findCategory, sumByCategory } from '../lib/categories';
+import { useCurrentUser } from '../lib/useCurrentUser';
 
 type Comment = {
   id: string;
@@ -29,6 +30,7 @@ type Expense = {
   comments: Comment[] | null;
   receipt_url: string | null;
   is_excluded: boolean; // おごり等で割り勘の対象外
+  is_settled: boolean; // 途中精算で精算済みにした記録
 };
 
 type MonthlyStatus = {
@@ -45,12 +47,6 @@ const REACTION_TYPES = [
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2);
 
-const formatDateTime = (isoString: string) => {
-  if (!isoString) return '';
-  const d = new Date(isoString);
-  return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-};
-
 // 履歴に出すのは「買った日」。created_atは入力した日時なので、
 // まとめて入力すると全部同じ日付に見えてしまう。
 // 月の絞り込みもpurchase_dateで行っているので基準を揃える。
@@ -61,14 +57,12 @@ const formatPurchaseDate = (ymd: string) => {
 };
 
 export default function SettlementPage() {
-  const router = useRouter();
+  const { isDemoMode, myUserName } = useCurrentUser();
 
   // 状態管理
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [myUserName, setMyUserName] = useState<string>('');
   const [monthlyStatus, setMonthlyStatus] = useState<MonthlyStatus>({ is_paid: false, is_received: false });
   const [useSmartSplit, setUseSmartSplit] = useState(false);
   const SCAN_BONUS_PER_ITEM = 50; 
@@ -93,25 +87,6 @@ export default function SettlementPage() {
   const [editingItem, setEditingItem] = useState<Expense | null>(null);
 
   const [visibleCount, setVisibleCount] = useState(10);
-  const [showDetails, setShowDetails] = useState(false);
-
-  // 起動時のモード・ユーザー判定
-  useEffect(() => {
-    const mode = localStorage.getItem('kurasel_mode');
-    const storedName = localStorage.getItem('scan_io_user_name');
-
-    if (mode === 'demo') {
-      setIsDemoMode(true);
-      setMyUserName('あなた'); // デモの場合は強制的に「あなた」
-    } else {
-      setIsDemoMode(false);
-      if (!storedName) {
-        router.push('/login');
-      } else {
-        setMyUserName(storedName);
-      }
-    }
-  }, [router]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -121,12 +96,6 @@ export default function SettlementPage() {
     window.addEventListener('click', handleClickOutside);
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
-
-  const getCategoryIcon = (cat: string | null) => {
-    switch(cat) {
-      case 'food': return '🥦'; case 'daily': return '🧻'; case 'eatout': return '🍻'; case 'transport': return '🚃'; case 'other': return '📦'; default: return '📄';
-    }
-  };
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
@@ -322,249 +291,176 @@ export default function SettlementPage() {
   };
   const formatDate = (dateString: string) => { const d = new Date(dateString); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
-  const handleToggleExcluded = async (item: Expense) => {
+  // おごり・精算済みの切り替え。画面を先に変えて、保存に失敗したら戻す
+  const handleToggleFlag = async (item: Expense, key: 'is_excluded' | 'is_settled') => {
     if (checkDemo()) return;
-    const next = !item.is_excluded;
-    setExpenses(prev => prev.map(e => e.id === item.id ? { ...e, is_excluded: next } : e));
-    const { error } = await supabase.from('expenses').update({ is_excluded: next }).eq('id', item.id);
+    const next = !item[key];
+    setExpenses(prev => prev.map(e => e.id === item.id ? { ...e, [key]: next } : e));
+    const { error } = await supabase.from('expenses').update({ [key]: next }).eq('id', item.id);
     if (error) {
       console.error(error);
-      setExpenses(prev => prev.map(e => e.id === item.id ? { ...e, is_excluded: !next } : e));
+      setExpenses(prev => prev.map(e => e.id === item.id ? { ...e, [key]: !next } : e));
       alert('更新に失敗しました');
     }
   };
 
+  const handleSettleAllClick = () => {
+    if (checkDemo()) return;
+    const ids = expenses.filter(e => !e.is_settled).map(e => e.id);
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: 'まとめて精算済みにする',
+      message: `${monthLabel}の未精算の記録 ${ids.length}件を、すべて精算済みにします。`,
+      confirmText: '精算済みにする',
+      onConfirm: async () => {
+        closeModal();
+        const { error } = await supabase.from('expenses').update({ is_settled: true }).in('id', ids);
+        if (error) { console.error(error); alert('更新に失敗しました'); return; }
+        setExpenses(prev => prev.map(e => ids.includes(e.id) ? { ...e, is_settled: true } : e));
+      },
+    });
+  };
+
   // Calculation
   // おごり(is_excluded)は払った人の自腹扱いなので金額の計算には入れない。
-  // スキャン手当は「記録する手間」へのものなので件数には含める。
+  // 精算済み(is_settled)は途中精算で片付いた分なので、残りの精算額には入れない。
+  // ただしカテゴリ別の集計は「使ったお金」なので精算済みも含める。
+  // スキャン手当は「記録する手間」へのものなので、おごりも含めて未精算の件数で数える。
   const included = expenses.filter(e => !e.is_excluded);
   const excluded = expenses.filter(e => e.is_excluded);
+  const unsettled = included.filter(e => !e.is_settled);
+  const settled = included.filter(e => e.is_settled);
   const excludedAmount = excluded.reduce((sum, e) => sum + e.amount, 0);
-  const totalMe = included.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
-  const totalPartner = included.filter(e => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
+  const settledAmount = settled.reduce((sum, e) => sum + e.amount, 0);
+  const totalMe = unsettled.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
+  const totalPartner = unsettled.filter(e => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
   const totalAmount = totalMe + totalPartner;
   const splitAmount = Math.round(totalAmount / 2); 
   const basicBalance = totalMe - splitAmount; 
-  const myScanCount = expenses.filter(e => e.paid_by === myUserName).length;
-  const partnerScanCount = expenses.filter(e => e.paid_by !== myUserName).length;
+  const pending = expenses.filter(e => !e.is_settled);
+  const myScanCount = pending.filter(e => e.paid_by === myUserName).length;
+  const partnerScanCount = pending.filter(e => e.paid_by !== myUserName).length;
   const scanDiff = myScanCount - partnerScanCount; 
   const scanBonus = scanDiff * SCAN_BONUS_PER_ITEM; 
   const smartBalanceRaw = basicBalance + scanBonus;
   const roundTo100 = (num: number) => { const abs = Math.abs(num); const rounded = Math.floor(abs / 100) * 100; return num >= 0 ? rounded : -rounded; };
   const finalBalance = useSmartSplit ? roundTo100(smartBalanceRaw) : Math.round(basicBalance);
   const monthLabel = `${currentMonth.getFullYear()}年${currentMonth.getMonth() + 1}月`;
-  const isPayer = finalBalance < 0;
-  const isReceiver = finalBalance > 0;
-  const isSettled = monthlyStatus.is_received;
 
-  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
+  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-slate-50"></div>;
 
   return (
-    <div className={`px-4 py-8 sm:p-8 max-w-md mx-auto min-h-screen text-gray-700 relative pb-32 font-medium transition-colors duration-500 ${isDemoMode ? 'bg-orange-50/50' : 'bg-gradient-to-br from-slate-50 to-gray-100'}`}>
-      
-      {isDemoMode && (
-        <div className="fixed top-0 left-0 w-full bg-orange-400 text-white text-xs font-bold text-center py-1 z-50 shadow-md">
-          🚧 DEMO MODE - データは保存されません
-        </div>
-      )}
-
+    <PageShell isDemoMode={isDemoMode}>
       <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText={modalConfig.confirmText} />
       <EditModal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} expense={editingItem} onUpdate={handleUpdateComplete} />
 
-      <div className="flex justify-between items-center mb-6 sm:mb-8 mt-4">
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-700 drop-shadow-sm flex items-center gap-2">
-          精算 
-          {isDemoMode && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full border border-orange-200">DEMO</span>}
-        </h1>
-        
-        <div className="flex gap-2">
-          <button onClick={() => window.location.href = '/'} className="text-xs sm:text-sm font-bold text-slate-600 bg-white/80 backdrop-blur-md border border-white/40 px-3 py-2 sm:px-4 sm:py-2 rounded-full hover:bg-white hover:-translate-y-0.5 transition-all shadow-sm flex items-center gap-1">
-            <ArrowLeft size={14} /> 入力へ
-          </button>
-        </div>
-      </div>
+      <PageHeader title="精算" subtitle="ふたりの日常の支出を月ごとに精算します" isDemoMode={isDemoMode} />
 
-      <div className="flex items-center justify-between bg-white/70 backdrop-blur-xl p-3 sm:p-4 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-6 sm:mb-8 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/50 to-transparent pointer-events-none"></div>
-        <button onClick={() => changeMonth(-1)} className="p-3 sm:p-4 hover:bg-white/50 rounded-full transition text-gray-500 relative z-10 text-xs sm:text-sm">◀︎ 先月</button>
-        <span className="font-black text-lg sm:text-2xl text-gray-700 relative z-10">{monthLabel}</span>
-        <button onClick={() => changeMonth(1)} className="p-3 sm:p-4 hover:bg-white/50 rounded-full transition text-gray-500 relative z-10 text-xs sm:text-sm">次月 ▶︎</button>
-      </div>
+      {/* 月の切り替え */}
+      <Card className="flex items-center justify-between p-1.5 mb-6">
+        <button onClick={() => changeMonth(-1)} className="p-3 rounded-2xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition" aria-label="前の月"><ChevronLeft size={20} /></button>
+        <span className="font-black text-lg text-slate-800 tabular">{monthLabel}</span>
+        <button onClick={() => changeMonth(1)} className="p-3 rounded-2xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition" aria-label="次の月"><ChevronRight size={20} /></button>
+      </Card>
 
-      {loading ? (
-        <div className="text-center py-12 text-slate-600 font-bold animate-pulse">読み込み中...</div>
-      ) : (
+      {loading ? <Loading /> : (
         <>
-          <CategoryChart expenses={included} />
+          <SettlementCard
+            balance={finalBalance}
+            isPaid={monthlyStatus.is_paid}
+            isReceived={monthlyStatus.is_received}
+            isDemoMode={isDemoMode}
+            caption={`${monthLabel}の精算${useSmartSplit ? '（調整済）' : ''}`}
+            onStatusClick={handleStatusClick}
+            zeroLabel={unsettled.length === 0 && settled.length > 0 ? '精算済み' : '精算なし'}
+            rows={[
+              { label: settled.length > 0 ? '未精算の割り勘対象' : '割り勘の対象', value: totalAmount },
+              { label: '1人あたり (÷2)', value: splitAmount },
+              { label: 'あなたの立替', value: totalMe },
+              { label: '相手の立替', value: totalPartner },
+              { label: '基本の差額', value: basicBalance, signed: true, highlight: !useSmartSplit },
+              ...(useSmartSplit ? [{ label: `スキャン手当 (${scanDiff > 0 ? '+' : ''}${scanDiff}回)`, value: scanBonus, signed: true }, { label: '調整後', value: finalBalance, signed: true, highlight: true }] : []),
+            ]}
+            notes={<>
+              {settled.length > 0 && <p>※ 精算済み {settled.length}件（{settledAmount.toLocaleString()}円）は計算に含めていません</p>}
+              {excluded.length > 0 && <p>※ おごり {excluded.length}件（{excludedAmount.toLocaleString()}円）は計算に含めていません</p>}
+              {useSmartSplit && <p>※ 100円未満を端数調整しています</p>}
+            </>}
+          />
 
           {/* スマート精算切り替え */}
-          <div className="mb-6 bg-white/60 backdrop-blur-md p-3 sm:p-4 rounded-3xl border border-white/40 shadow-sm flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${useSmartSplit ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}>
-                      <Sparkles size={18} className={useSmartSplit ? 'fill-amber-400' : ''} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">スマート精算</p>
-                    <p className="text-[10px] text-slate-400">スキャン手当 ＆ 100円単位で調整</p>
-                  </div>
-              </div>
-              <button 
-                onClick={() => setUseSmartSplit(!useSmartSplit)}
-                className={`relative w-12 h-7 rounded-full transition-colors duration-200 ease-in-out ${useSmartSplit ? 'bg-slate-700' : 'bg-slate-300'}`}
-              >
-                  <span className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full shadow-sm transition-transform duration-200 ${useSmartSplit ? 'translate-x-5' : 'translate-x-0'}`} />
-              </button>
+          <button onClick={() => setUseSmartSplit(!useSmartSplit)} className="w-full mb-6 bg-white/80 backdrop-blur-xl p-4 rounded-3xl border border-white shadow-[0_4px_24px_rgba(15,23,42,0.06)] flex items-center justify-between gap-3 text-left">
+            <span className="flex items-center gap-3">
+              <span className={`p-2 rounded-full ${useSmartSplit ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}`}><Sparkles size={18} /></span>
+              <span>
+                <span className="block text-sm font-bold text-slate-700">スマート精算</span>
+                <span className="block text-[10px] text-slate-400">スキャン手当（1件{SCAN_BONUS_PER_ITEM}円）＆ 100円単位で調整</span>
+              </span>
+            </span>
+            <Toggle checked={useSmartSplit} />
+          </button>
+
+          {/* ふたりの立替 */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            {[
+              { label: 'あなた', total: totalMe, count: myScanCount, dot: 'bg-slate-700' },
+              { label: '相手', total: totalPartner, count: partnerScanCount, dot: 'bg-rose-400' },
+            ].map((p) => (
+              <Card key={p.label} className="p-4">
+                <p className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-1"><span className={`w-2 h-2 rounded-full ${p.dot}`}></span>{p.label}の立替</p>
+                <p className="text-xl font-black text-slate-800 tabular">¥{p.total.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-slate-400 mt-0.5">未精算 {p.count}件</p>
+              </Card>
+            ))}
           </div>
 
-          <div className={`p-6 sm:p-8 rounded-3xl text-white shadow-[0_10px_40px_rgb(0,0,0,0.15)] border border-white/20 mb-6 transition-all relative overflow-hidden ${isSettled ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' : finalBalance === 0 ? 'bg-gradient-to-br from-gray-500 to-gray-600' : finalBalance > 0 ? 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20' : 'bg-gradient-to-br from-rose-400 to-rose-500 shadow-rose-500/20'}`}>
-            <div className="absolute inset-0 bg-white/10 mix-blend-overlay pointer-events-none"></div>
-            
-            {/* 精算ステータス表示エリア */}
-            <div className="relative z-10 mb-4 flex flex-col items-center">
-              {isSettled ? (
-                 <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full backdrop-blur-md mb-2">
-                   <CheckCircle2 size={20} className="text-white" />
-                   <span className="font-bold">精算完了</span>
-                   {/* 受け取る側のみ、完了を取り消せるボタンを表示 */}
-                   {isReceiver && (
-                     <button onClick={() => handleStatusClick('received')} className="ml-2 bg-white/20 p-1 rounded-full hover:bg-white/40">
-                        {/* デモモードの時はアイコンをLockに変更 */}
-                        {isDemoMode ? <Lock size={14} /> : <X size={14} />}
-                     </button>
-                   )}
-                 </div>
-              ) : (
-                <>
-                  {/* 支払う側の表示 */}
-                  {isPayer && (
-                    <button 
-                      onClick={() => handleStatusClick('paid')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md mb-2 font-bold transition-all ${monthlyStatus.is_paid ? 'bg-white/30 text-white' : 'bg-white text-rose-500 shadow-lg'} ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}
-                    >
-                      {monthlyStatus.is_paid ? (
-                        <> <Clock size={18} /> <span className="whitespace-nowrap">支払い報告済み</span> </>
-                      ) : (
-                        <> <Send size={18} /> 支払いを完了する </>
-                      )}
-                    </button>
-                  )}
+          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(DAILY_CATEGORIES, included)} />
 
-                  {/* 受け取る側の表示 */}
-                  {isReceiver && (
-                    <div className="flex flex-col items-center gap-2">
-                      {monthlyStatus.is_paid && (
-                        <span className="text-xs bg-white/20 px-3 py-1 rounded-full animate-pulse">相手が「支払い済み」にしました</span>
-                      )}
-                      <button 
-                        onClick={() => handleStatusClick('received')}
-                        className={`flex items-center gap-2 bg-white text-slate-600 px-6 py-3 rounded-full shadow-lg font-bold hover:bg-slate-50 transition-all active:scale-95 ${isDemoMode ? 'opacity-80 cursor-not-allowed' : ''}`}
-                      >
-                         <CheckCircle2 size={20} className="text-emerald-500" /> <span className="whitespace-nowrap">受け取り完了</span>
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <p className="text-xs sm:text-sm font-bold opacity-90 mb-2 relative z-10 text-center">{monthLabel}の精算{useSmartSplit && ' (調整済)'}</p>
-            <h2 className="text-2xl sm:text-4xl font-black mb-4 relative z-10 drop-shadow-sm leading-tight text-center">
-              {finalBalance === 0 ? '精算なし' : (
-                <>相手{finalBalance > 0 ? 'から' : 'へ'}<br className="sm:hidden" /><span className="mx-1 sm:mx-3 underline underline-offset-8 decoration-white/50">{Math.abs(finalBalance).toLocaleString()}</span>円{finalBalance > 0 ? 'もらう' : '払う'}</>
-              )}
-            </h2>
-
-            <div className="mt-4 bg-black/20 rounded-xl overflow-hidden relative z-10">
-              <button 
-                onClick={() => setShowDetails(!showDetails)}
-                className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold hover:bg-white/5 transition-colors"
-              >
-                <span className="flex items-center gap-2"><HelpCircle size={14} /> 計算の内訳を見る</span>
-                {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-              
-              {showDetails && (
-                <div className="px-4 pb-4 pt-1 text-xs space-y-2 opacity-90 border-t border-white/10">
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>割り勘の対象</span><span className="font-mono">{totalAmount.toLocaleString()} 円</span></div>
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>1人あたり (÷2)</span><span className="font-mono">{splitAmount.toLocaleString()} 円</span></div>
-                  <div className="flex justify-between border-b border-white/10 py-1"><span>あなたの立替済</span><span className="font-mono">{totalMe.toLocaleString()} 円</span></div>
-                  <div className="flex justify-between border-b border-white/10 py-1 text-emerald-200"><span>基本の差額</span><span className="font-mono">{basicBalance > 0 ? '+' : ''}{basicBalance.toLocaleString()} 円</span></div>
-                  {excluded.length > 0 && (
-                    <div className="pt-1 text-[10px] text-center opacity-80">※ おごり {excluded.length}件（{excludedAmount.toLocaleString()}円）は計算に含めていません</div>
-                  )}
-                  {useSmartSplit && (
-                    <>
-                      <div className="flex justify-between border-b border-white/10 py-1 text-amber-200"><span>スキャン手当 ({scanDiff > 0 ? '+' : ''}{scanDiff}回)</span><span className="font-mono">{scanBonus > 0 ? '+' : ''}{scanBonus.toLocaleString()} 円</span></div>
-                      <div className="pt-2 text-[10px] text-center opacity-70">※ 100円未満を端数調整しています</div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+          <div className="flex items-center justify-between gap-3 mb-3 ml-1">
+            <h3 className="font-black text-slate-800 flex items-baseline gap-2 min-w-0 whitespace-nowrap">履歴<span className="text-xs font-bold text-slate-400">{expenses.length}件</span></h3>
+            {expenses.some(e => !e.is_settled) && (
+              <button onClick={handleSettleAllClick} className="shrink-0 whitespace-nowrap flex items-center gap-1 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded-full hover:bg-emerald-50 transition-colors"><CheckCheck size={13} strokeWidth={2.5} />まとめて精算済みに</button>
+            )}
           </div>
+          {expenses.length === 0 ? (
+            <EmptyState icon="🧾" title="この月の記録はまだありません" />
+          ) : (
+            <>
+              <ul className="space-y-3">
+                {expenses.slice(0, visibleCount).map((item) => {
+                  const isMe = item.paid_by === myUserName;
+                  const reactions = item.reactions || {};
+                  const reactionEntries = Object.entries(reactions);
+                  const comments = item.comments || [];
+                  const isCommentOpen = activeCommentId === item.id;
+                  const cat = findCategory(DAILY_CATEGORIES, item.category);
 
-          <div className="bg-white/70 backdrop-blur-xl p-5 sm:p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-10 relative overflow-hidden">
-            <h3 className="font-bold mb-4 sm:mb-6 pb-3 text-gray-700 border-b border-gray-200/50 relative z-10 text-sm sm:text-base">支出の内訳</h3>
-            <div className="flex justify-between mb-4 relative z-10">
-              <span className="flex items-center text-gray-700 font-bold text-xs sm:text-sm"><span className="w-3 h-3 sm:w-4 sm:h-4 bg-gradient-to-br from-slate-400 to-slate-600 rounded-full mr-2 sm:mr-4 shadow-sm"></span>あなた</span>
-              <div className="text-right">
-                  <span className="font-black text-lg sm:text-xl block">{totalMe.toLocaleString()}円</span>
-                  <span className="text-[10px] sm:text-xs text-gray-400 font-bold">スキャン: {myScanCount}回</span>
-              </div>
-            </div>
-            <div className="flex justify-between pt-2 sm:pt-4 relative z-10">
-              <span className="flex items-center text-gray-700 font-bold text-xs sm:text-sm"><span className="w-3 h-3 sm:w-4 sm:h-4 bg-gradient-to-br from-rose-400 to-rose-500 rounded-full mr-2 sm:mr-4 shadow-sm"></span>相手</span>
-              <div className="text-right">
-                <span className="font-black text-lg sm:text-xl text-rose-600 block">{totalPartner.toLocaleString()}円</span>
-                <span className="text-[10px] sm:text-xs text-rose-300 font-bold">スキャン: {partnerScanCount}回</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-bold mb-4 sm:mb-6 text-gray-700 ml-2 text-sm sm:text-base">{monthLabel}の履歴 ({expenses.length}件)</h3>
-            {expenses.length === 0 ? (
-              <p className="text-center text-gray-500 font-bold text-sm py-12 bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40">データがありません</p>
-            ) : (
-              <>
-                <ul className="space-y-3 sm:space-y-4">
-                  {expenses.slice(0, visibleCount).map((item) => {
-                    const isMe = item.paid_by === myUserName;
-                    const reactions = item.reactions || {};
-                    const reactionEntries = Object.entries(reactions);
-                    const comments = item.comments || [];
-                    const isCommentOpen = activeCommentId === item.id;
-
-                    return (
-                      <li key={item.id} className={`backdrop-blur-md p-4 sm:p-5 rounded-3xl shadow-sm border transition-all ${item.is_excluded ? 'bg-amber-50/60 border-amber-100' : 'bg-white/80 border-white/60 hover:bg-white'}`}>
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-center gap-3 sm:gap-4">
-                            <span className="text-2xl sm:text-3xl bg-gray-100/80 p-2 sm:p-3 rounded-2xl shadow-inner">{getCategoryIcon(item.category)}</span>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                  <p className="font-black text-gray-800 text-base sm:text-lg mb-0.5 line-clamp-1">{item.store_name || '店名なし'}</p>
-                                  {item.receipt_url && (
-                                      <a href={item.receipt_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 p-1 bg-blue-50 rounded-full transition-colors" onClick={(e) => e.stopPropagation()}>
-                                          <Paperclip size={14} />
-                                      </a>
-                                  )}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {item.purchase_date && (
-                                  <p className="text-gray-400 text-[10px] font-mono font-bold">
-                                    {formatPurchaseDate(item.purchase_date)}
-                                  </p>
+                  return (
+                    <li key={item.id}>
+                      <Card className={`p-4 ${item.is_excluded ? '!bg-amber-50/70 !border-amber-100' : item.is_settled ? '!bg-emerald-50/50 !border-emerald-100' : ''}`}>
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="flex items-center gap-2.5 min-[360px]:gap-3 min-w-0">
+                            <span className="text-xl w-10 h-10 min-[360px]:text-2xl min-[360px]:w-12 min-[360px]:h-12 shrink-0 flex items-center justify-center bg-slate-100 rounded-2xl">{cat.icon}</span>
+                            <div className="min-w-0">
+                              <div className="flex items-start gap-1.5">
+                                <p className="font-black text-slate-800 leading-snug line-clamp-2 [overflow-wrap:anywhere] [line-break:strict]">{item.store_name || '店名なし'}</p>
+                                {item.receipt_url && (
+                                  <a href={item.receipt_url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-slate-700 shrink-0" aria-label="レシート画像を開く" onClick={(e) => e.stopPropagation()}>
+                                    <Paperclip size={14} />
+                                  </a>
                                 )}
                               </div>
+                              <p className="text-slate-400 text-[11px] font-bold tabular">{formatPurchaseDate(item.purchase_date)}</p>
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className={`font-black text-lg sm:text-xl mb-1 ${item.is_excluded ? 'text-slate-400 line-through decoration-slate-300' : 'text-slate-700'}`}>¥{item.amount.toLocaleString()}</p>
-                            <span className={`text-[10px] sm:text-xs px-2 sm:px-3 py-1 rounded-full font-bold shadow-sm ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-600'}`}>{item.paid_by}</span>
+                            <p className={`font-black text-lg tabular ${item.is_excluded ? 'text-slate-400 line-through decoration-slate-300' : item.is_settled ? 'text-slate-400' : 'text-slate-800'}`}>¥{item.amount.toLocaleString()}</p>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-500'}`}>{item.paid_by}</span>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 mt-2 relative min-h-[32px] flex-wrap">
+                        <div className="flex items-center gap-1 mt-3 flex-wrap">
                           {reactionEntries.map(([user, reactionId]) => {
                             const isMyReaction = user === myUserName;
                             const reactionType = REACTION_TYPES.find(r => r.id === reactionId);
@@ -573,97 +469,108 @@ export default function SettlementPage() {
                               <button
                                 key={user}
                                 onClick={(e) => { e.stopPropagation(); handleReaction(item, reactionId); }}
-                                className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded-full text-sm leading-none shadow-sm transition-all border group relative overflow-hidden ${isMyReaction ? `${reactionType.bg} ${reactionType.border} ${reactionType.text} ring-1 ring-white` : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 grayscale hover:grayscale-0'}`}
+                                className={`flex items-center gap-1 pl-1.5 pr-2.5 py-1 rounded-full border transition-all ${isMyReaction ? `${reactionType.bg} ${reactionType.border} ${reactionType.text}` : 'bg-white border-slate-200 text-slate-400'}`}
                               >
-                                <img src={reactionType.src} alt="reaction" className="w-4 h-4 sm:w-5 sm:h-5 object-contain block drop-shadow-sm" />
+                                {/* eslint-disable-next-line @next/next/no-img-element -- 外部の小さな絵文字画像 */}
+                                <img src={reactionType.src} alt="" className="w-4 h-4 object-contain" />
                                 <span className="text-[10px] font-bold">{user}</span>
                               </button>
                             );
                           })}
 
                           <div className="relative">
-                            <button onClick={(e) => { e.stopPropagation(); setActivePickerId(activePickerId === item.id ? null : item.id); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors leading-none"><Smile size={18} strokeWidth={2.5} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setActivePickerId(activePickerId === item.id ? null : item.id); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-600 transition-colors" aria-label="リアクション"><Smile size={16} strokeWidth={2.5} /></button>
                             {activePickerId === item.id && (
-                              <div className="absolute left-0 bottom-full mb-2 bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-slate-100 p-2 flex gap-2 z-50 animate-in slide-in-from-bottom-2 fade-in duration-200">
+                              <div className="absolute left-0 bottom-full mb-2 bg-white rounded-2xl shadow-xl border border-slate-100 p-1.5 flex gap-1 z-30 animate-in">
                                 {REACTION_TYPES.map((type) => (
-                                  <button key={type.id} onClick={(e) => { e.stopPropagation(); handleReaction(item, type.id); }} className="w-10 h-10 flex items-center justify-center rounded-xl transition-all hover:scale-125 active:scale-95 hover:bg-slate-50">
-                                    <img src={type.src} alt={type.id} className="w-8 h-8 object-contain drop-shadow-sm" />
+                                  <button key={type.id} onClick={(e) => { e.stopPropagation(); handleReaction(item, type.id); }} className="w-10 h-10 flex items-center justify-center rounded-xl transition-all hover:scale-110 active:scale-95 hover:bg-slate-50">
+                                    {/* eslint-disable-next-line @next/next/no-img-element -- 外部の小さな絵文字画像 */}
+                                    <img src={type.src} alt={type.id} className="w-7 h-7 object-contain" />
                                   </button>
                                 ))}
                               </div>
                             )}
                           </div>
 
-                          <button onClick={() => setActiveCommentId(isCommentOpen ? null : item.id)} className={`w-8 h-8 flex items-center justify-center rounded-full border transition-colors leading-none ${comments.length > 0 ? 'bg-blue-50 border-blue-200 text-blue-500' : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}>
-                            <MessageCircle size={18} strokeWidth={2.5} className={comments.length > 0 ? 'fill-blue-100' : ''} />
+                          <button onClick={() => setActiveCommentId(isCommentOpen ? null : item.id)} className={`h-8 min-w-8 px-2 flex items-center justify-center gap-1 rounded-full border transition-colors ${comments.length > 0 ? 'bg-sky-50 border-sky-200 text-sky-600' : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'}`} aria-label="コメント">
+                            <MessageCircle size={16} strokeWidth={2.5} />
+                            {comments.length > 0 && <span className="text-[10px] font-bold">{comments.length}</span>}
                           </button>
 
+                        </div>
+
+                        {/* 精算まわりの状態と操作 */}
+                        <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-slate-100">
+                          {/* 精算済みはふたりの間のことなので、どちらからでも切り替えられる */}
+                          <SettledChip settled={item.is_settled} onClick={() => handleToggleFlag(item, 'is_settled')} />
                           {/* 自腹にするかは払った本人が決める。相手からは表示だけ */}
-                          {isMe ? (
-                            <button onClick={() => handleToggleExcluded(item)} className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${item.is_excluded ? 'bg-amber-100 border-amber-200 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200'}`}>
-                              <Gift size={12} /> {item.is_excluded ? 'おごり' : 'おごりにする'}
-                            </button>
-                          ) : item.is_excluded && (
-                            <span className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full border bg-amber-100 border-amber-200 text-amber-700">
-                              <Gift size={12} /> {item.paid_by}のおごり
-                            </span>
-                          )}
+                          <ExcludedChip excluded={item.is_excluded} onClick={isMe ? () => handleToggleFlag(item, 'is_excluded') : undefined} />
 
                           {isMe && (
-                            <div className="ml-auto flex gap-3">
-                              <button onClick={() => handleEditClick(item)} className="text-xs font-bold text-slate-400 hover:text-blue-500 transition-colors">編集</button>
-                              <button onClick={() => handleDeleteClick(item.id)} className="text-xs font-bold text-rose-400 hover:text-rose-600 transition-colors">削除</button>
+                            <div className="ml-auto flex">
+                              <button onClick={() => handleEditClick(item)} className={buttonClass.icon} aria-label="編集"><Pencil size={15} /></button>
+                              <button onClick={() => handleDeleteClick(item.id)} className={`${buttonClass.icon} hover:!text-rose-500`} aria-label="削除"><Trash2 size={15} /></button>
                             </div>
                           )}
                         </div>
 
                         {isCommentOpen && (
-                          <div className="comment-area mt-4 pt-4 border-t border-slate-100 animate-in slide-in-from-top-2 fade-in duration-200">
+                          <div className="comment-area mt-4 pt-4 border-t border-slate-100 animate-in">
                             {comments.length > 0 ? (
-                              <ul className="space-y-4 mb-4">
+                              <ul className="space-y-3 mb-4">
                                 {comments.map((comment, i) => {
                                   const isMyComment = comment.user === myUserName;
                                   const isEditing = editingCommentId === comment.id;
                                   return (
                                     <li key={comment.id || i} className={`flex flex-col ${isMyComment ? 'items-end' : 'items-start'}`}>
                                       {isEditing ? (
-                                        <div className="w-full max-w-[90%] flex gap-2 items-end">
-                                          <textarea value={editingText} onChange={(e) => setEditingText(e.target.value)} className="flex-1 bg-white border border-blue-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 resize-none h-20" />
-                                          <div className="flex flex-col gap-2"><button onClick={() => handleSaveEditComment(item)} className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600"><Check size={14} /></button><button onClick={() => setEditingCommentId(null)} className="p-2 bg-slate-200 text-slate-500 rounded-full hover:bg-slate-300"><X size={14} /></button></div>
+                                        <div className="w-full flex gap-2 items-end">
+                                          <textarea value={editingText} onChange={(e) => setEditingText(e.target.value)} className="flex-1 bg-white border border-slate-300 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:ring-4 focus:ring-slate-200/70 resize-none h-20" />
+                                          <div className="flex flex-col gap-1.5">
+                                            <button onClick={() => handleSaveEditComment(item)} className="p-2 bg-slate-800 text-white rounded-full" aria-label="保存"><Check size={14} /></button>
+                                            <button onClick={() => setEditingCommentId(null)} className="p-2 bg-slate-100 text-slate-500 rounded-full" aria-label="やめる"><X size={14} /></button>
+                                          </div>
                                         </div>
                                       ) : (
                                         <>
-                                          <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap leading-relaxed shadow-sm relative group ${isMyComment ? 'bg-blue-500 text-white rounded-tr-none' : 'bg-slate-100 text-slate-700 rounded-tl-none'}`}>
+                                          <div className={`px-4 py-2.5 rounded-2xl text-sm max-w-[85%] whitespace-pre-wrap leading-relaxed ${isMyComment ? 'bg-slate-800 text-white rounded-br-md' : 'bg-slate-100 text-slate-700 rounded-bl-md'}`}>
                                             {comment.text}
-                                            {isMyComment && (<div className="absolute -left-16 top-1/2 -translate-y-1/2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleDeleteCommentClick(item, comment.id)} className="p-1.5 bg-rose-100 text-rose-500 rounded-full hover:bg-rose-200"><Trash2 size={12} /></button><button onClick={() => handleStartEditComment(comment)} className="p-1.5 bg-blue-100 text-blue-500 rounded-full hover:bg-blue-200"><Pencil size={12} /></button></div>)}
                                           </div>
-                                          <div className="flex gap-2 mt-1 px-1"><span className="text-[10px] font-bold text-slate-400">{comment.user}</span><span className="text-[10px] text-slate-300">{formatDate(comment.timestamp)}</span></div>
+                                          <div className="flex items-center gap-2 mt-1 px-1">
+                                            <span className="text-[10px] font-bold text-slate-400">{comment.user}</span>
+                                            <span className="text-[10px] text-slate-300">{formatDate(comment.timestamp)}</span>
+                                            {isMyComment && (
+                                              <>
+                                                <button onClick={() => handleStartEditComment(comment)} className="text-[10px] font-bold text-slate-400 hover:text-slate-600">編集</button>
+                                                <button onClick={() => handleDeleteCommentClick(item, comment.id)} className="text-[10px] font-bold text-slate-400 hover:text-rose-500">削除</button>
+                                              </>
+                                            )}
+                                          </div>
                                         </>
                                       )}
                                     </li>
                                   );
                                 })}
                               </ul>
-                            ) : (<p className="text-xs text-slate-400 text-center mb-4">まだコメントはありません。会話を始めましょう！</p>)}
+                            ) : (<p className="text-xs text-slate-400 text-center mb-4">まだコメントはありません</p>)}
                             <div className="flex gap-2 items-end">
-                              <textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleCommentSubmit(item); }} placeholder="コメントを入力..." className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all resize-none h-12 min-h-[48px] max-h-32" />
-                              <button onClick={() => handleCommentSubmit(item)} disabled={!commentText.trim()} className="w-10 h-10 mb-1 flex items-center justify-center rounded-full bg-blue-500 text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-600 transition-all active:scale-95"><Send size={18} strokeWidth={2.5} className="ml-0.5" /></button>
+                              <textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleCommentSubmit(item); }} placeholder="コメントを入力..." className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-4 focus:ring-slate-200/70 resize-none h-12 min-h-[48px] max-h-32" />
+                              <button onClick={() => handleCommentSubmit(item)} disabled={!commentText.trim()} className="w-11 h-11 flex items-center justify-center rounded-full bg-slate-800 text-white disabled:opacity-40 transition-all active:scale-95" aria-label="送信"><Send size={17} className="ml-0.5" /></button>
                             </div>
-                            <p className="text-[10px] text-slate-300 text-center mt-2">Ctrl + Enter で送信</p>
                           </div>
                         )}
-                      </li>
-                    );
-                  })}
-                </ul>
-                {expenses.length > visibleCount && (
-                  <button onClick={() => setVisibleCount(prev => prev + 10)} className="w-full py-3 mt-4 text-xs font-bold text-slate-500 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center gap-1">もっと見る <ChevronDown size={14} /></button>
-                )}
-              </>
-            )}
-          </div>
+                      </Card>
+                    </li>
+                  );
+                })}
+              </ul>
+              {expenses.length > visibleCount && (
+                <button onClick={() => setVisibleCount(prev => prev + 10)} className={`${buttonClass.secondary} w-full py-3 mt-4 text-xs`}>もっと見る <ChevronDown size={14} /></button>
+              )}
+            </>
+          )}
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

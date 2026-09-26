@@ -1,26 +1,70 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* 数字は桁がそろう等幅数字で出す（金額の縦位置がそろう） */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/*
+ * ダークモードにはまだ対応していないので、OSの設定にかかわらず明るい背景で固定する。
+ * 背景を黒にするとスクロールの端で黒がのぞく。
+ */
+html {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: #f1f5f9;
+  color: #334155;
+  -webkit-tap-highlight-color: transparent;
+  /* 横向きにしたとき iOS が勝手に文字を拡大しないように */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/*
+ * iOS Safari の日付入力は独自の見た目になり、
+ * 中の文字の幅ぶん枠から横にはみ出したり、空のとき高さが潰れたりする。
+ * 見た目を標準に戻し、枠の幅に収める。
+ */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
+/* 数値入力の上下ボタンは使わないので消す（幅が狭いと金額が隠れる） */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/*
+ * 画面のあちこちで使っている animate-in 系のクラス。
+ * 元は tailwindcss-animate の書き方だが未導入で効いていなかったので、
+ * 「ふわっと出る」一種類だけここで用意する。
+ */
+@keyframes kurasel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.animate-in {
+  animation: kurasel-enter 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in {
+    animation: none;
+  }
 }
