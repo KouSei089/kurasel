@@ -4,11 +4,12 @@ import { supabase } from '../lib/supabase';
 import Modal from '../components/Modal';
 import ReceiptCapture from '../components/ReceiptCapture';
 import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, MonthSwitcher, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../components/ui';
-import { Check, Loader2, Lock, Paperclip, Pencil, Trash2, Smartphone } from 'lucide-react';
+import { Check, Loader2, Lock, Paperclip, Pencil, Trash2, Smartphone, Repeat, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { PERSONAL_CATEGORIES, findCategory, sumByCategory, toPersonalCategory } from '../lib/categories';
 import { normalizeImage, scanReceipt, uploadReceipt, removeReceipts } from '../lib/receipt';
-import { DEMO_PERSONAL_EXPENSES } from '../lib/demoData';
+import { DEMO_PERSONAL_EXPENSES, DEMO_SUBSCRIPTIONS } from '../lib/demoData';
+import { Subscription, monthlyAmount, syncSubscriptions, daysUntil } from '../lib/subscriptions';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { toLocalYMD } from '../lib/date';
 
@@ -23,6 +24,7 @@ type PersonalExpense = {
   purchase_date: string;
   category: string | null;
   receipt_url: string | null;
+  subscription_id?: number | null; // サブスクから自動で記録したもの
   created_at: string;
 };
 
@@ -80,8 +82,30 @@ export default function PersonalPage() {
     return () => { cancelled = true; };
   }, [myUserName, isDemoMode, month, reloadKey]);
 
+  // サブスク: 支払日を過ぎた分を個人の支出に記録してから、まとめ用に一覧を読む。
+  // 記録が増えたら支出の一覧も読み直す
+  const [subscriptions, setSubscriptions] = useState<Pick<Subscription, 'id' | 'name' | 'amount' | 'cycle' | 'next_billing_date' | 'is_active'>[]>([]);
+  useEffect(() => {
+    if (!myUserName || isDemoMode) return;
+    let cancelled = false;
+    syncSubscriptions(myUserName).then((recorded) => {
+      if (cancelled) return;
+      if (recorded > 0) setReloadKey((k) => k + 1);
+      return supabase.from('subscriptions').select('id, name, amount, cycle, next_billing_date, is_active').eq('owner', myUserName).eq('is_active', true).then(({ data }) => {
+        if (!cancelled && data) setSubscriptions(data);
+      });
+    });
+    return () => { cancelled = true; };
+  }, [myUserName, isDemoMode]);
+
+  const shownSubscriptions = isDemoMode
+    ? DEMO_SUBSCRIPTIONS.filter((s) => s.is_active).map((s) => { const d = new Date(); d.setDate(d.getDate() + s.daysFromToday); return { ...s, next_billing_date: toLocalYMD(d) }; })
+    : subscriptions;
+  const subscriptionMonthly = shownSubscriptions.reduce((sum, s) => sum + monthlyAmount(s), 0);
+  const nextSubscription = [...shownSubscriptions].sort((a, b) => a.next_billing_date.localeCompare(b.next_billing_date))[0];
+
   // デモは月に関係なく見本を出す（日常の精算画面と同じ扱い）
-  const shownExpenses = isDemoMode ? DEMO_PERSONAL_EXPENSES : expenses;
+  const shownExpenses: PersonalExpense[] = isDemoMode ? DEMO_PERSONAL_EXPENSES : expenses;
   const isLoading = !isDemoMode && loading;
 
   const checkDemo = () => {
@@ -234,6 +258,28 @@ export default function PersonalPage() {
 
           <CategoryBreakdown title="カテゴリ別" items={sumByCategory(PERSONAL_CATEGORIES, shownExpenses)} />
 
+          {/* サブスクのまとめ。押すと管理画面へ */}
+          <Link href="/personal/subscriptions" className="block mb-6 group">
+            <Card className="p-4 flex items-center gap-3 transition-all group-hover:-translate-y-0.5">
+              <span className="p-2.5 rounded-2xl bg-violet-50 text-violet-500 shrink-0"><Repeat size={18} /></span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-slate-800">サブスク</p>
+                <p className="text-[11px] font-bold text-slate-400 truncate">
+                  {shownSubscriptions.length === 0
+                    ? '登録すると、支払日に自動で記録します'
+                    : nextSubscription && `次は ${nextSubscription.name}（${Math.max(daysUntil(nextSubscription.next_billing_date), 0) === 0 ? '今日' : `あと${daysUntil(nextSubscription.next_billing_date)}日`}）`}
+                </p>
+              </div>
+              {shownSubscriptions.length > 0 && (
+                <div className="text-right shrink-0">
+                  <p className="font-black text-slate-800 tabular">¥{Math.round(subscriptionMonthly).toLocaleString()}<span className="text-[10px] text-slate-400">/月</span></p>
+                  <p className="text-[10px] font-bold text-slate-400">{shownSubscriptions.length}件</p>
+                </div>
+              )}
+              <ChevronRight size={16} className="text-slate-300 shrink-0" />
+            </Card>
+          </Link>
+
           {/* 入力フォーム */}
           <div ref={formRef} className="scroll-mt-4 mb-8">
             <Card className={`p-5 ${editingId ? 'ring-2 ring-violet-300' : ''}`}>
@@ -290,7 +336,10 @@ export default function PersonalPage() {
                             <a href={item.receipt_url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-slate-700 shrink-0 mt-0.5" aria-label="レシート画像を開く"><Paperclip size={14} /></a>
                           )}
                         </div>
-                        <p className="text-slate-400 text-[11px] font-bold tabular">{formatYMD(item.purchase_date)}</p>
+                        <p className="text-slate-400 text-[11px] font-bold tabular flex items-center gap-1.5">
+                          {formatYMD(item.purchase_date)}
+                          {item.subscription_id && <span className="inline-flex items-center gap-0.5 px-1.5 rounded-full bg-violet-50 text-violet-600"><Repeat size={10} /> 自動</span>}
+                        </p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-black text-lg text-slate-800 tabular">¥{item.amount.toLocaleString()}</p>
