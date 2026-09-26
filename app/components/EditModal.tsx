@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import ExcludedToggle from './ExcludedToggle';
 
 type EditModalProps = {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
     amount: 0,
     category: 'food',
     paid_by: '',
+    is_excluded: false,
   });
   const [users, setUsers] = useState<{id: number, name: string}[]>([]);
   const [saving, setSaving] = useState(false);
@@ -35,6 +37,7 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
         amount: target.amount,
         category: target.category || 'food',
         paid_by: target.paid_by,
+        is_excluded: !!target.is_excluded,
       });
     }
   }
@@ -59,6 +62,7 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
         purchase_date: formData.purchase_date,
         category: formData.category,
         paid_by: formData.paid_by,
+        is_excluded: formData.is_excluded,
       })
       .eq('id', expense.id);
 
@@ -152,6 +156,8 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
               </div>
             </div>
           </div>
+
+          <ExcludedToggle value={formData.is_excluded} onChange={(v) => setFormData({ ...formData, is_excluded: v })} />
         </div>
 
         <div className="flex gap-4 mt-8">
