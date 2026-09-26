@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 
 type ModalProps = {
   isOpen: boolean;
@@ -11,8 +12,6 @@ type ModalProps = {
   onConfirm: (inputValue?: string) => void;
   defaultValue?: string; // prompt用の初期値
 };
-
-import { useState } from 'react';
 
 export default function Modal({
   isOpen,
@@ -38,34 +37,30 @@ export default function Modal({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden max-h-full transform transition-all scale-100 animate-in fade-in zoom-in-95 duration-200">
-        
-        {/* コンテンツエリア */}
-        <div className="p-6 text-center">
-          {title && <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>}
-          {message && <p className="text-sm text-gray-500 mb-4 whitespace-pre-wrap">{message}</p>}
+  // 削除・取り消しなど元に戻せない操作は赤で出す
+  const isDanger = type === 'confirm' && /削除|取り消/.test(`${title}${confirmText}`);
 
-          {/* Promptタイプの場合の入力欄 */}
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm overflow-y-auto" onClick={type === 'alert' ? undefined : onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xs max-h-full overflow-y-auto animate-in" onClick={(e) => e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-5 text-center">
+          {title && <h3 className="text-lg font-black text-slate-800 mb-2">{title}</h3>}
+          {message && <p className="text-sm text-slate-500 whitespace-pre-wrap leading-relaxed">{message}</p>}
+
           {type === 'prompt' && (
             <input
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg p-2 text-lg focus:outline-none focus:border-blue-500 bg-gray-50"
+              className="w-full mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-200/70"
               autoFocus
             />
           )}
         </div>
 
-        {/* ボタンエリア */}
-        <div className="flex border-t border-gray-100">
+        <div className="flex gap-2 px-4 pb-4">
           {(type === 'confirm' || type === 'prompt') && (
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 transition border-r border-gray-100"
-            >
+            <button onClick={onClose} className="flex-1 py-3 rounded-2xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition">
               {cancelText}
             </button>
           )}
@@ -74,9 +69,7 @@ export default function Modal({
               onConfirm(inputValue);
               if (type === 'alert') onClose(); // alertならここで閉じる
             }}
-            className={`flex-1 py-3 text-sm font-bold hover:bg-blue-50 transition ${
-              type === 'confirm' && title?.includes('削除') ? 'text-red-500' : 'text-blue-600'
-            }`}
+            className={`flex-1 py-3 rounded-2xl text-sm font-bold text-white transition ${isDanger ? 'bg-rose-500 hover:bg-rose-600' : 'bg-slate-800 hover:bg-slate-700'}`}
           >
             {confirmText}
           </button>

@@ -1,20 +1,19 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
-import { Camera, Upload, Check, Loader2, ArrowRight, Receipt, LogOut, User, X, Plane } from 'lucide-react';
+import { Check, Loader2, LogOut } from 'lucide-react';
 import Modal from './components/Modal';
 import ExcludedToggle from './components/ExcludedToggle';
+import ReceiptCapture from './components/ReceiptCapture';
+import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, buttonClass, inputClass } from './components/ui';
 import { normalizeImage, scanReceipt, uploadReceipt } from './lib/receipt';
+import { DAILY_CATEGORIES } from './lib/categories';
+import { useCurrentUser } from './lib/useCurrentUser';
 
 export default function Home() {
   const router = useRouter();
-  
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
-
-  const [myUserName, setMyUserName] = useState('');
-  const [isDemoMode, setIsDemoMode] = useState(false); // ★追加: デモモード判定
+  const { isDemoMode, myUserName } = useCurrentUser();
 
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -37,24 +36,6 @@ export default function Home() {
   });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
 
-  // ★変更: ログイン判定ロジック
-  useEffect(() => {
-    const mode = localStorage.getItem('kurasel_mode');
-    const storedName = localStorage.getItem('scan_io_user_name');
-
-    if (mode === 'demo') {
-      setIsDemoMode(true);
-      setMyUserName('あなた'); // DEMO時は名前固定
-    } else {
-      setIsDemoMode(false);
-      if (!storedName) {
-        router.push('/login');
-      } else {
-        setMyUserName(storedName);
-      }
-    }
-  }, [router]);
-
   const handleLogoutClick = () => {
     setModalConfig({
       isOpen: true,
@@ -73,17 +54,20 @@ export default function Home() {
     router.push('/login');
   };
 
-  const handleClearImage = () => {
+  const clearImage = () => {
     setPreviewUrl(null);
     setFileToUpload(null);
-    if(cameraInputRef.current) cameraInputRef.current.value = '';
-    if(galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const resetForm = () => {
+    setStoreName('');
+    setAmount('');
+    setCategory('food');
+    setIsExcluded(false);
+    clearImage();
+  };
 
+  const handleFile = async (file: File) => {
     setIsScanning(true);
 
     let processFile: File;
@@ -120,24 +104,14 @@ export default function Home() {
     setIsSaving(true);
 
     try {
-      // ★追加: DEMOモードなら保存処理をスキップ
+      // DEMOモードなら保存処理をスキップ
       if (isDemoMode) {
         setTimeout(() => {
           setIsSaving(false);
-          // フォームリセット
-          setStoreName('');
-          setAmount('');
-          setCategory('food');
-          setIsExcluded(false);
-          setPreviewUrl(null);
-          setFileToUpload(null);
-          if(cameraInputRef.current) cameraInputRef.current.value = '';
-          if(galleryInputRef.current) galleryInputRef.current.value = '';
-
-          // DEMO用成功メッセージ
+          resetForm();
           setModalConfig({
             isOpen: true,
-            type: 'alert', 
+            type: 'alert',
             title: 'DEMO登録完了 ✨',
             message: 'デモモードのためデータは保存されませんが、\n正常に動作することを確認しました！',
             confirmText: 'OK',
@@ -148,10 +122,7 @@ export default function Home() {
       }
 
       // --- 本番用の保存処理 ---
-      let uploadedUrl = null;
-      if (fileToUpload) {
-        uploadedUrl = await uploadReceipt(fileToUpload);
-      }
+      const uploadedUrl = fileToUpload ? await uploadReceipt(fileToUpload) : null;
 
       const { error } = await supabase.from('expenses').insert({
         store_name: storeName,
@@ -164,20 +135,11 @@ export default function Home() {
       });
 
       if (error) throw error;
-      
-      setStoreName('');
-      setAmount('');
-      setCategory('food');
-      setIsExcluded(false);
-      setPreviewUrl(null);
-      setFileToUpload(null);
-      
-      if(cameraInputRef.current) cameraInputRef.current.value = '';
-      if(galleryInputRef.current) galleryInputRef.current.value = '';
-      
+
+      resetForm();
       setModalConfig({
         isOpen: true,
-        type: 'alert', 
+        type: 'alert',
         title: '登録完了 ✨',
         message: '支出を記録しました！',
         confirmText: 'OK',
@@ -193,139 +155,57 @@ export default function Home() {
     }
   };
 
-  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100"></div>;
+  if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-slate-50"></div>;
 
   return (
-    <div className={`px-4 py-6 sm:p-8 max-w-md mx-auto min-h-screen text-gray-700 relative pb-32 font-medium transition-colors duration-500 ${isDemoMode ? 'bg-orange-50/50' : 'bg-gradient-to-br from-slate-50 to-gray-100'}`}>
-      
-      {/* ★追加: DEMOモード時の帯表示 */}
-      {isDemoMode && (
-        <div className="fixed top-0 left-0 w-full bg-orange-400 text-white text-xs font-bold text-center py-1 z-50 shadow-md">
-          🚧 DEMO MODE - データは保存されません
-        </div>
-      )}
-
-      <Modal 
-        isOpen={modalConfig.isOpen} 
-        onClose={closeModal} 
-        type={modalConfig.type} 
-        title={modalConfig.title} 
-        message={modalConfig.message} 
-        onConfirm={modalConfig.onConfirm} 
-        confirmText={modalConfig.confirmText} 
+    <PageShell isDemoMode={isDemoMode}>
+      <Modal
+        isOpen={modalConfig.isOpen}
+        onClose={closeModal}
+        type={modalConfig.type}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        onConfirm={modalConfig.onConfirm}
+        confirmText={modalConfig.confirmText}
       />
 
-      <div className="flex justify-between items-center mb-6 sm:mb-8 mt-4">
-        <h1 className="text-xl sm:text-2xl font-black text-slate-700 tracking-tight flex items-center gap-2">
-          レシートスキャン
-          {isDemoMode && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full border border-orange-200">DEMO</span>}
-        </h1>
+      <PageHeader
+        title="支出の記録"
+        subtitle={`${myUserName} として記録します`}
+        isDemoMode={isDemoMode}
+        actions={
+          <button onClick={handleLogoutClick} className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-rose-500 px-2 py-1.5 rounded-full hover:bg-white transition-colors">
+            <LogOut size={13} /> ログアウト
+          </button>
+        }
+      />
 
-        <button onClick={() => router.push('/settlement')} className="text-xs sm:text-sm font-bold text-slate-600 bg-white/80 backdrop-blur-md border border-white/40 px-4 py-2 sm:px-5 sm:py-2.5 rounded-full hover:bg-white hover:-translate-y-0.5 transition-all shadow-sm flex items-center gap-2 group">
-          <span>精算へ</span>
-          <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-        </button>
-      </div>
+      <Card className="p-5">
+        <ReceiptCapture previewUrl={previewUrl} isScanning={isScanning} onFile={handleFile} onClear={clearImage} />
 
-      {/* 旅行の支出はここでは記録しない。専用画面へ誘導する */}
-      <button onClick={() => router.push('/trips')} className="w-full mb-6 sm:mb-8 flex items-center justify-between bg-sky-50/80 backdrop-blur-md border border-sky-100 px-4 py-3 rounded-2xl shadow-sm hover:bg-sky-100/80 transition-all group">
-        <span className="flex items-center gap-3">
-          <span className="p-2 bg-white rounded-full shadow-sm"><Plane size={16} className="text-sky-500" /></span>
-          <span className="flex flex-col items-start leading-tight">
-            <span className="text-sm font-black text-slate-700">旅行の記録・精算</span>
-            <span className="text-[10px] font-bold text-slate-400">日常の家計とは別に管理します</span>
-          </span>
-        </span>
-        <ArrowRight size={16} className="text-sky-400 group-hover:translate-x-1 transition-transform" />
-      </button>
-
-      <div className="bg-white/70 backdrop-blur-xl p-4 sm:p-6 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-6 sm:mb-8 relative overflow-hidden text-center group transition-all hover:shadow-[0_8px_40px_rgb(0,0,0,0.12)]">
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/50 to-transparent pointer-events-none"></div>
-        
-        <input 
-          type="file" 
-          accept="image/*" 
-          capture="environment" 
-          ref={cameraInputRef} 
-          onChange={handleFileChange} 
-          className="hidden" 
-        />
-        <input 
-          type="file" 
-          accept="image/*" 
-          ref={galleryInputRef} 
-          onChange={handleFileChange} 
-          className="hidden" 
-        />
-        
-        {previewUrl ? (
-          <div className="relative mb-4 group/preview">
-            <img src={previewUrl} alt="Preview" className="w-full h-40 sm:h-48 object-cover rounded-2xl shadow-inner border border-white/60" />
-            <button 
-              onClick={handleClearImage} 
-              className="absolute top-2 right-2 bg-black/50 text-white/90 p-1.5 rounded-full hover:bg-rose-500 transition-colors backdrop-blur-sm"
-              title="画像を削除"
-            >
-              <X size={16} strokeWidth={2.5} />
-            </button>
+        <SectionTitle>内容</SectionTitle>
+        <div className="space-y-4">
+          <Field label="店名 / 内容">
+            <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="コンビニ, スーパーなど" className={inputClass} />
+          </Field>
+          <div className="flex gap-3">
+            <Field label="金額 (円)" className="flex-1 min-w-0">
+              <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={`${inputClass} text-right text-xl font-black tabular`} />
+            </Field>
+            <Field label="日付" className="w-[46%] shrink-0">
+              <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className={`${inputClass} !px-3 text-sm h-[56px]`} />
+            </Field>
           </div>
-        ) : (
-          <div className="py-8 sm:py-10 border-2 border-dashed border-slate-300/70 rounded-2xl mb-4 bg-slate-50/50 flex flex-col items-center justify-center gap-4 transition-colors group-hover:bg-white/60 group-hover:border-slate-400/50">
-            <div className="p-3 sm:p-4 bg-white rounded-full shadow-sm"><Receipt size={28} className="text-slate-400 sm:w-8 sm:h-8" /></div>
-            <p className="text-slate-500 text-xs sm:text-sm font-bold">レシートを撮影して自動入力</p>
-            <div className="flex gap-2 sm:gap-3 mt-2">
-               <button onClick={() => cameraInputRef.current?.click()} className="px-4 py-2 sm:px-5 sm:py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2 hover:bg-slate-50 transition-all"><Camera size={14} className="text-blue-500 sm:w-4 sm:h-4" /> カメラ</button>
-               <button onClick={() => galleryInputRef.current?.click()} className="px-4 py-2 sm:px-5 sm:py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-bold text-slate-600 flex items-center gap-2 hover:bg-slate-50 transition-all"><Upload size={14} className="text-slate-500 sm:w-4 sm:h-4" /> 選択</button>
-            </div>
-          </div>
-        )}
-        
-        {isScanning && (
-          <div className="absolute inset-0 bg-white/90 backdrop-blur-md flex flex-col items-center justify-center z-10 animate-in fade-in duration-200">
-            <Loader2 className="animate-spin text-blue-500 mb-3" size={32} />
-            <p className="font-bold text-slate-600 text-sm animate-pulse">AIが解析中...</p>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white/70 backdrop-blur-xl p-5 sm:p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-white/40 mb-8 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/50 to-transparent pointer-events-none"></div>
-        <h2 className="text-base sm:text-lg font-black text-slate-700 mb-4 sm:mb-6 flex items-center gap-2 relative z-10"><span className="w-1.5 h-5 sm:h-6 bg-slate-700 rounded-full"></span>支出の記録</h2>
-        <div className="space-y-4 sm:space-y-6 relative z-10">
-          <div>
-            <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">店名 / 内容</label>
-            <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="コンビニ, スーパーなど" className="w-full p-3 sm:p-4 rounded-2xl bg-white/60 border border-slate-200/60 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:bg-white font-bold text-slate-700 placeholder:text-slate-300 transition-all shadow-sm text-sm sm:text-base" />
-          </div>
-          <div className="flex gap-3 sm:gap-4">
-            <div className="flex-1">
-              <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">金額 (円)</label>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="w-full p-3 sm:p-4 rounded-2xl bg-white/60 border border-slate-200/60 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:bg-white font-black text-lg sm:text-xl text-slate-700 placeholder:text-slate-300 transition-all text-right shadow-sm tracking-tight" />
-            </div>
-            <div className="w-[35%] min-w-[120px]">
-              <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">日付</label>
-              <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="w-full p-3 sm:p-4 rounded-2xl bg-white/60 border border-slate-200/60 focus:outline-none focus:ring-2 focus:ring-slate-200 focus:bg-white font-bold text-slate-600 text-xs sm:text-sm h-[52px] sm:h-[60px] shadow-sm text-center" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">カテゴリ</label>
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-              {[{ id: 'food', icon: '🥦', label: '食費' }, { id: 'daily', icon: '🧻', label: '日用品' }, { id: 'eatout', icon: '🍻', label: '外食' }, { id: 'transport', icon: '🚃', label: '交通' }, { id: 'other', icon: '📦', label: '他' }].map((cat) => (
-                <button key={cat.id} onClick={() => setCategory(cat.id)} className={`flex flex-col items-center justify-center py-2 sm:py-3 rounded-2xl border transition-all active:scale-95 ${category === cat.id ? 'bg-slate-700 text-white border-slate-700 shadow-md transform -translate-y-1' : 'bg-white/60 border-transparent text-slate-400 hover:bg-white hover:shadow-sm'}`}><span className="text-lg sm:text-xl mb-0.5 sm:mb-1 filter drop-shadow-sm">{cat.icon}</span><span className={`text-[9px] sm:text-[10px] font-bold ${category === cat.id ? 'text-white' : 'text-slate-400'}`}>{cat.label}</span></button>
-              ))}
-            </div>
-          </div>
+          <Field label="カテゴリ">
+            <CategoryPicker categories={DAILY_CATEGORIES} value={category} onChange={setCategory} />
+          </Field>
           <ExcludedToggle value={isExcluded} onChange={setIsExcluded} />
         </div>
-        <button onClick={handleSave} disabled={isSaving} className="mt-6 sm:mt-8 w-full py-3 sm:py-4 bg-slate-800 text-white font-black text-base sm:text-lg rounded-2xl shadow-lg shadow-slate-300 hover:bg-slate-700 hover:-translate-y-0.5 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 relative z-10">{isSaving ? <Loader2 className="animate-spin" /> : <Check strokeWidth={3} />}<span>記録する</span></button>
-      </div>
 
-      <div className="mt-8 flex flex-col items-center gap-3">
-        <div className="flex items-center gap-3 pl-2 pr-4 py-1.5 bg-white/60 backdrop-blur-md rounded-full border border-white/40 shadow-sm">
-          <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center shadow-inner"><User size={16} className="text-slate-500" /></div>
-          <div className="flex flex-col items-start leading-none"><span className="text-[10px] text-slate-400 font-bold mb-0.5">ログイン中</span><span className="text-sm font-black text-slate-600">{myUserName}</span></div>
-        </div>
-        <button onClick={handleLogoutClick} className="text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1 px-3 py-2 rounded-lg hover:bg-rose-50"><LogOut size={12} />ログアウト</button>
-      </div>
-    </div>
+        <button onClick={handleSave} disabled={isSaving} className={`${buttonClass.primary} w-full mt-6 py-4 text-base`}>
+          {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Check strokeWidth={3} size={20} />}記録する
+        </button>
+      </Card>
+    </PageShell>
   );
 }
