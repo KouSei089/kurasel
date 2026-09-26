@@ -7,7 +7,7 @@ import Modal from '../components/Modal';
 import { PageShell, PageHeader, Card, SectionTitle, ChoiceButton, buttonClass } from '../components/ui';
 import { Check, ImageUp, Loader2, AlertTriangle, Smartphone, Send } from 'lucide-react';
 import { scanHistory, type HistoryItem } from '../lib/receipt';
-import { DAILY_CATEGORIES, PERSONAL_CATEGORIES, toPersonalCategory } from '../lib/categories';
+import { CATEGORIES, normalizeCategory } from '../lib/categories';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { todayYMD } from '../lib/date';
 
@@ -18,7 +18,6 @@ type Destination = 'shared' | 'personal';
 
 type Row = HistoryItem & {
   key: string;
-  aiCategory: string; // AI が推測した日常用カテゴリ。登録先を切り替えたときの読み替え元
   checked: boolean;
   duplicate: boolean; // 登録先に同じ日付・金額の記録がすでにある
   overlap: boolean; // 別のスクショにも同じ支払いが写っている
@@ -29,7 +28,6 @@ const DESTINATIONS: { id: Destination; label: string; description: string }[] = 
   { id: 'personal', label: '個人', description: '自分だけの支出です' },
 ];
 
-const categoryFor = (dest: Destination, aiCategory: string) => (dest === 'personal' ? toPersonalCategory(aiCategory) : aiCategory);
 
 // 同じ日付・金額なら同じ支払いとみなす（店名は読み取りで表記が揺れるので見ない）
 const sameKey = (e: { purchase_date?: string; date?: string; amount: number }) => `${e.purchase_date ?? e.date}_${e.amount}`;
@@ -92,7 +90,7 @@ function ImportPage() {
           // 続けて撮ったスクショは端が重なりやすいので、別の画像に同じ支払いがあれば重複の可能性として外しておく
           const overlaps = seenInOtherShots.has(key);
           keysInThisShot.add(key);
-          found.push({ ...item, key: `${Date.now()}-${index}-${found.length}`, aiCategory: item.category, category: categoryFor(destination, item.category), checked: !overlaps && item.kind !== 'transfer', duplicate: false, overlap: overlaps });
+          found.push({ ...item, key: `${Date.now()}-${index}-${found.length}`, category: normalizeCategory(item.category), checked: !overlaps && item.kind !== 'transfer', duplicate: false, overlap: overlaps });
         }
         keysInThisShot.forEach((k) => seenInOtherShots.add(k));
       } catch (err) {
@@ -111,7 +109,7 @@ function ImportPage() {
 
   const changeDestination = async (dest: Destination) => {
     setDestination(dest);
-    const remapped = rows.map((r) => ({ ...r, category: categoryFor(dest, r.aiCategory), duplicate: false, checked: !r.overlap && r.kind !== 'transfer' }));
+    const remapped = rows.map((r) => ({ ...r, duplicate: false, checked: !r.overlap && r.kind !== 'transfer' }));
     setRows(await markDuplicates(remapped, dest));
   };
 
@@ -119,7 +117,6 @@ function ImportPage() {
 
   const selected = rows.filter((r) => r.checked);
   const selectedTotal = selected.reduce((sum, r) => sum + r.amount, 0);
-  const categories = destination === 'personal' ? PERSONAL_CATEGORIES : DAILY_CATEGORIES;
 
   const handleRegister = async () => {
     if (selected.length === 0) return;
@@ -200,7 +197,7 @@ function ImportPage() {
                   <div className="flex items-center gap-2 mt-2 pl-7">
                     <input type="date" value={r.date} onChange={(e) => updateRow(r.key, { date: e.target.value })} className="w-[8.5rem] shrink-0 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 bg-white" aria-label="日付" />
                     <select value={r.category} onChange={(e) => updateRow(r.key, { category: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 bg-white" aria-label="カテゴリ">
-                      {categories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                      {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
                     </select>
                   </div>
                   {r.kind === 'transfer' && (

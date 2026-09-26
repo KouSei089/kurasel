@@ -9,7 +9,7 @@ import ExcludedToggle from './components/ExcludedToggle';
 import ReceiptCapture from './components/ReceiptCapture';
 import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, buttonClass, inputClass } from './components/ui';
 import { normalizeImage, scanReceipt, uploadReceipt } from './lib/receipt';
-import { DAILY_CATEGORIES } from './lib/categories';
+import { normalizeCategory } from './lib/categories';
 import { useCurrentUser } from './lib/useCurrentUser';
 import { todayYMD } from './lib/date';
 
@@ -90,7 +90,7 @@ export default function Home() {
       if (data.store_name) setStoreName(data.store_name);
       if (data.amount) setAmount(String(data.amount));
       if (data.date) setPurchaseDate(data.date);
-      if (data.category) setCategory(data.category);
+      if (data.category) setCategory(normalizeCategory(data.category));
     } catch (error) {
       console.error('Scan error:', error);
     } finally {
@@ -199,7 +199,7 @@ export default function Home() {
             </Field>
           </div>
           <Field label="カテゴリ">
-            <CategoryPicker categories={DAILY_CATEGORIES} value={category} onChange={setCategory} />
+            <CategoryPicker context="shared" value={category} onChange={setCategory} />
           </Field>
           <ExcludedToggle value={isExcluded} onChange={setIsExcluded} />
         </div>

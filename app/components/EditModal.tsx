@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import ExcludedToggle from './ExcludedToggle';
 import { Field, CategoryPicker, ChoiceButton, buttonClass, inputClass } from './ui';
-import { DAILY_CATEGORIES } from '../lib/categories';
 
 type EditableExpense = { id: number; store_name: string; purchase_date: string; amount: number; category: string | null; paid_by: string; is_excluded?: boolean };
 
@@ -103,7 +102,7 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
             </Field>
           </div>
           <Field label="カテゴリ">
-            <CategoryPicker categories={DAILY_CATEGORIES} value={formData.category} onChange={(category) => setFormData({ ...formData, category })} />
+            <CategoryPicker context="shared" value={formData.category} onChange={(category) => setFormData({ ...formData, category })} />
           </Field>
           <Field label="支払った人">
             <div className="grid grid-cols-2 gap-2">

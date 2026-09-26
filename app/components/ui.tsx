@@ -2,8 +2,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { ScanLine, Wallet, Plane, UserRound, ArrowLeft, CheckCircle2, Clock, Send, X, Lock, ChevronDown, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
-import type { Category } from '../lib/categories';
+import { ScanLine, Wallet, Plane, UserRound, ChartColumn, ArrowLeft, CheckCircle2, Clock, Send, X, Lock, ChevronDown, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
+import { FOLDED_COLOR, categoriesFor, normalizeCategory, type Category, type CategoryContext } from '../lib/categories';
 
 // 画面をまたいで使う見た目の部品。色・角丸・余白はここでそろえる。
 //   日常 = ネイビー(slate-800) / 旅行 = スカイ(sky-500) / 個人 = バイオレット(violet-500) / おごり = アンバー
@@ -29,19 +29,20 @@ const NAV_ITEMS = [
   { href: '/settlement', label: '精算', icon: Wallet, match: (p: string) => p.startsWith('/settlement'), activeBg: 'bg-slate-100' },
   { href: '/trips', label: '旅行', icon: Plane, match: (p: string) => p.startsWith('/trips'), activeBg: 'bg-sky-100 text-sky-600' },
   { href: '/personal', label: '個人', icon: UserRound, match: (p: string) => p.startsWith('/personal'), activeBg: 'bg-violet-100 text-violet-600' },
+  { href: '/analytics', label: '分析', icon: ChartColumn, match: (p: string) => p.startsWith('/analytics'), activeBg: 'bg-slate-100' },
 ];
 
 function BottomNav() {
   const pathname = usePathname();
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/85 backdrop-blur-xl border-t border-slate-200/70 pb-[env(safe-area-inset-bottom)]">
-      <ul className="max-w-md mx-auto grid grid-cols-4">
+      <ul className="max-w-md mx-auto grid grid-cols-5">
         {NAV_ITEMS.map(({ href, label, icon: Icon, match, activeBg }) => {
           const active = match(pathname);
           return (
             <li key={href}>
               <Link href={href} className={`flex flex-col items-center gap-1 py-2.5 text-[10px] font-bold transition-colors ${active ? 'text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}>
-                <span className={`px-4 py-1 rounded-full transition-colors ${active ? activeBg : ''}`}>
+                <span className={`px-3.5 py-1 rounded-full transition-colors ${active ? activeBg : ''}`}>
                   <Icon size={20} strokeWidth={active ? 2.5 : 2} />
                 </span>
                 {label}
@@ -166,19 +167,34 @@ export function ChoiceButton({ selected, onClick, children, className = '' }: { 
 const pickerColumns = (count: number) => {
   if (count <= 5) return 'grid-cols-5';
   if (count === 6) return 'grid-cols-3 min-[360px]:grid-cols-6'; // 3×2 / 6×1
-  if (count === 8) return 'grid-cols-4'; // 4×2
-  return 'grid-cols-3 min-[360px]:grid-cols-5'; // 9つなら 3×3 / 5+4
+  if (count === 9) return 'grid-cols-3 min-[360px]:grid-cols-5'; // 3×3 / 5+4
+  return 'grid-cols-4'; // 8つなら 4×2、すべて表示の13なら 4×4
 };
 
-export function CategoryPicker({ categories, value, onChange }: { categories: Category[]; value: string; onChange: (id: string) => void }) {
+// 分類の選択。画面ごとによく使う分類を先に出し、残りは「すべて表示」で開く。
+// 残りの分類が選ばれているとき（編集など）は、最初から開いておく
+export function CategoryPicker({ context, value, onChange }: { context: CategoryContext; value: string; onChange: (id: string) => void }) {
+  const { primary, rest } = categoriesFor(context);
+  const [expanded, setExpanded] = useState(false);
+  const selectedId = normalizeCategory(value);
+  const showAll = expanded || rest.some((c) => c.id === selectedId);
+  const shown = showAll ? [...primary, ...rest] : primary;
   return (
-    <div className={`grid gap-1.5 ${pickerColumns(categories.length)}`}>
-      {categories.map((cat) => (
-        <ChoiceButton key={cat.id} selected={value === cat.id} onClick={() => onChange(cat.id)} className="flex flex-col items-center py-2 min-w-0">
-          <span className="text-lg leading-none mb-1">{cat.icon}</span>
-          <span className="text-[10px] font-bold whitespace-nowrap">{cat.short ?? cat.label}</span>
-        </ChoiceButton>
-      ))}
+    <div>
+      <div className={`grid gap-1.5 ${pickerColumns(shown.length)}`}>
+        {shown.map((cat) => (
+          <ChoiceButton key={cat.id} selected={selectedId === cat.id} onClick={() => onChange(cat.id)} className="flex flex-col items-center py-2 min-w-0">
+            <span className="text-lg leading-none mb-1">{cat.icon}</span>
+            <span className="text-[10px] font-bold whitespace-nowrap">{cat.short ?? cat.label}</span>
+          </ChoiceButton>
+        ))}
+      </div>
+      {!rest.some((c) => c.id === selectedId) && (
+        <button type="button" onClick={() => setExpanded(!showAll)} className="mt-2 w-full flex items-center justify-center gap-1 text-[11px] font-bold text-slate-400 hover:text-slate-600 py-1">
+          {showAll ? '主な分類だけにする' : `すべての分類を表示（あと${rest.length}つ）`}
+          <ChevronDown size={13} className={`transition-transform ${showAll ? 'rotate-180' : ''}`} />
+        </button>
+      )}
     </div>
   );
 }
@@ -306,20 +322,29 @@ export function SettlementCard({ balance, isPaid, isReceived, isDemoMode, captio
 export function CategoryBreakdown({ title, items }: { title: string; items: (Category & { value: number })[] }) {
   const total = items.reduce((sum, c) => sum + c.value, 0);
   if (total === 0) return null;
+  // 帯グラフは、色のある分類はそれぞれ、色のない分類は灰色の「そのほか」1本にまとめる
+  const colored = items.filter((c) => c.color);
+  const folded = items.filter((c) => !c.color).reduce((sum, c) => sum + c.value, 0);
+  const segments = [
+    ...colored.map((c) => ({ key: c.id, label: c.label, value: c.value, color: c.color! })),
+    ...(folded > 0 ? [{ key: 'folded', label: 'そのほか', value: folded, color: FOLDED_COLOR }] : []),
+  ];
   return (
     <Card className="p-5 mb-6">
       <div className="flex items-baseline justify-between mb-3">
         <h3 className="font-black text-sm text-slate-800">{title}</h3>
         <span className="text-sm font-black text-slate-700 tabular">¥{total.toLocaleString()}</span>
       </div>
-      {/* 全体に占める割合を1本の帯で */}
-      <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 mb-4 gap-0.5">
-        {items.map((cat) => <span key={cat.id} className={cat.bar} style={{ width: `${(cat.value / total) * 100}%` }} />)}
+      {/* 全体に占める割合を1本の帯で。区切りは2pxの隙間 */}
+      <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 mb-4 gap-0.5" role="img" aria-label={`${title}の割合`}>
+        {segments.map((seg) => (
+          <span key={seg.key} title={`${seg.label} ¥${seg.value.toLocaleString()}（${Math.round((seg.value / total) * 100)}%）`} style={{ width: `${(seg.value / total) * 100}%`, backgroundColor: seg.color }} />
+        ))}
       </div>
       <ul className="space-y-2">
         {items.map((cat) => (
           <li key={cat.id} className="flex items-center gap-3 text-xs">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${cat.bar}`} />
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color ?? FOLDED_COLOR }} />
             <span className="flex-1 font-bold text-slate-500">{cat.icon} {cat.label}</span>
             <span className="text-slate-400 tabular">{Math.round((cat.value / total) * 100)}%</span>
             <span className="w-20 text-right font-bold text-slate-700 tabular">¥{cat.value.toLocaleString()}</span>

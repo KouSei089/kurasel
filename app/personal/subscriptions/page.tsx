@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import Modal from '../../components/Modal';
 import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, ChoiceButton, EmptyState, Loading, buttonClass, inputClass } from '../../components/ui';
 import { BellRing, Check, Loader2, Pause, Pencil, Play, Trash2 } from 'lucide-react';
-import { PERSONAL_CATEGORIES, findCategory } from '../../lib/categories';
+import { findCategory } from '../../lib/categories';
 import { Cycle, CYCLE_LABEL, Subscription, daysUntil, monthlyAmount, nextBillingDate, syncSubscriptions } from '../../lib/subscriptions';
 import { DEMO_SUBSCRIPTIONS } from '../../lib/demoData';
 import { useCurrentUser } from '../../lib/useCurrentUser';
@@ -162,7 +162,7 @@ export default function SubscriptionsPage() {
   if (!myUserName && !isDemoMode) return <div className="min-h-screen bg-slate-50"></div>;
 
   const row = (s: Subscription) => {
-    const cat = findCategory(PERSONAL_CATEGORIES, s.category);
+    const cat = findCategory(s.category);
     const share = monthlyTotal > 0 ? monthlyAmount(s) / monthlyTotal : 0;
     const days = daysUntil(s.next_billing_date, today);
     return (
@@ -272,7 +272,7 @@ export default function SubscriptionsPage() {
                   <input type="date" value={nextDate} min={today} onChange={(e) => setNextDate(e.target.value)} className={`${inputClass} !px-3 text-sm h-[52px]`} />
                 </Field>
                 <Field label="カテゴリ">
-                  <CategoryPicker categories={PERSONAL_CATEGORIES} value={category} onChange={setCategory} />
+                  <CategoryPicker context="personal" value={category} onChange={setCategory} />
                 </Field>
               </div>
               <button onClick={handleSave} disabled={isSaving} className={`${buttonClass.primary} w-full mt-6 py-4 text-base`}>

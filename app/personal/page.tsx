@@ -6,7 +6,7 @@ import ReceiptCapture from '../components/ReceiptCapture';
 import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, MonthSwitcher, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../components/ui';
 import { Check, Loader2, Lock, Paperclip, Pencil, Trash2, Smartphone, Repeat, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { PERSONAL_CATEGORIES, findCategory, sumByCategory, toPersonalCategory } from '../lib/categories';
+import { findCategory, normalizeCategory, sumByCategory } from '../lib/categories';
 import { normalizeImage, scanReceipt, uploadReceipt, removeReceipts } from '../lib/receipt';
 import { DEMO_PERSONAL_EXPENSES, DEMO_SUBSCRIPTIONS } from '../lib/demoData';
 import { Subscription, monthlyAmount, syncSubscriptions, daysUntil } from '../lib/subscriptions';
@@ -45,7 +45,7 @@ export default function PersonalPage() {
   const [storeName, setStoreName] = useState('');
   const [amount, setAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(toLocalYMD(new Date()));
-  const [category, setCategory] = useState('meal');
+  const [category, setCategory] = useState('eatout');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -127,7 +127,7 @@ export default function PersonalPage() {
     setEditingId(null);
     setStoreName('');
     setAmount('');
-    setCategory('meal');
+    setCategory('eatout');
     setPurchaseDate(toLocalYMD(new Date()));
     clearImage();
   };
@@ -153,7 +153,7 @@ export default function PersonalPage() {
       if (data.store_name) setStoreName(data.store_name);
       if (data.amount) setAmount(String(data.amount));
       if (data.date) setPurchaseDate(data.date);
-      setCategory(toPersonalCategory(data.category));
+      setCategory(normalizeCategory(data.category));
     } catch (err) {
       console.error('Scan error:', err);
     } finally {
@@ -256,7 +256,7 @@ export default function PersonalPage() {
             <p className="relative text-[11px] font-bold text-white/75 mt-2">{shownExpenses.length}件の記録 ・ ふたりの精算には含まれません</p>
           </div>
 
-          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(PERSONAL_CATEGORIES, shownExpenses)} />
+          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(shownExpenses)} />
 
           {/* サブスクのまとめ。押すと管理画面へ */}
           <Link href="/personal/subscriptions" className="block mb-6 group">
@@ -302,7 +302,7 @@ export default function PersonalPage() {
                   </Field>
                 </div>
                 <Field label="カテゴリ">
-                  <CategoryPicker categories={PERSONAL_CATEGORIES} value={category} onChange={setCategory} />
+                  <CategoryPicker context="personal" value={category} onChange={setCategory} />
                 </Field>
               </div>
 
@@ -324,7 +324,7 @@ export default function PersonalPage() {
           ) : (
             <ul className="space-y-3">
               {shownExpenses.map((item) => {
-                const cat = findCategory(PERSONAL_CATEGORIES, item.category);
+                const cat = findCategory(item.category);
                 return (
                   <li key={item.id}>
                     <Card className={`p-4 flex items-center gap-2.5 min-[360px]:gap-3 ${editingId === item.id ? 'ring-2 ring-violet-300' : ''}`}>

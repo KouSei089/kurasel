@@ -8,7 +8,7 @@ import SettledChip from '../components/SettledChip';
 import { PageShell, PageHeader, Card, MonthSwitcher, SettlementCard, CategoryBreakdown, Toggle, EmptyState, Loading, buttonClass } from '../components/ui';
 import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, CheckCheck } from 'lucide-react';
 import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
-import { DAILY_CATEGORIES, findCategory, sumByCategory } from '../lib/categories';
+import { findCategory, sumByCategory } from '../lib/categories';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { toLocalYMD } from '../lib/date';
 
@@ -403,7 +403,7 @@ export default function SettlementPage() {
             ))}
           </div>
 
-          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(DAILY_CATEGORIES, included)} />
+          <CategoryBreakdown title="カテゴリ別" items={sumByCategory(included)} />
 
           <div className="flex items-center justify-between gap-3 mb-3 ml-1">
             <h3 className="font-black text-slate-800 flex items-baseline gap-2 min-w-0 whitespace-nowrap">履歴<span className="text-xs font-bold text-slate-400">{expenses.length}件</span></h3>
@@ -422,7 +422,7 @@ export default function SettlementPage() {
                   const reactionEntries = Object.entries(reactions);
                   const comments = item.comments || [];
                   const isCommentOpen = activeCommentId === item.id;
-                  const cat = findCategory(DAILY_CATEGORIES, item.category);
+                  const cat = findCategory(item.category);
 
                   return (
                     <li key={item.id}>

@@ -7,7 +7,7 @@ export type ScanResult = {
   store_name?: string;
   amount?: number;
   date?: string;
-  category?: string; // 日常用のカテゴリ（DAILY_CATEGORIES の id）
+  category?: string; // CATEGORIES の id
 };
 
 // iPhoneのHEICはそのままだとプレビューもAI解析もできないのでJPEGに変換する
@@ -46,7 +46,7 @@ export type HistoryItem = {
   store_name: string;
   amount: number;
   date: string; // YYYY-MM-DD
-  category: string; // 日常用のカテゴリ
+  category: string; // CATEGORIES の id
   kind: 'payment' | 'transfer'; // お店への支払い / 人への送付
 };
 
