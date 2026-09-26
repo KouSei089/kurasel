@@ -5,11 +5,12 @@ import Modal from '../components/Modal';
 import EditModal from '../components/EditModal';
 import { ExcludedChip } from '../components/ExcludedToggle';
 import SettledChip from '../components/SettledChip';
-import { PageShell, PageHeader, Card, SettlementCard, CategoryBreakdown, Toggle, EmptyState, Loading, buttonClass } from '../components/ui';
-import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, ChevronLeft, ChevronRight, CheckCheck } from 'lucide-react';
+import { PageShell, PageHeader, Card, MonthSwitcher, SettlementCard, CategoryBreakdown, Toggle, EmptyState, Loading, buttonClass } from '../components/ui';
+import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, CheckCheck } from 'lucide-react';
 import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
 import { DAILY_CATEGORIES, findCategory, sumByCategory } from '../lib/categories';
 import { useCurrentUser } from '../lib/useCurrentUser';
+import { toLocalYMD } from '../lib/date';
 
 type Comment = {
   id: string;
@@ -113,9 +114,8 @@ export default function SettlementPage() {
     const month = currentMonth.getMonth();
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-    const toYMD = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const firstDayStr = toYMD(new Date(year, month, 1));
-    const lastDayStr = toYMD(new Date(year, month + 1, 0));
+    const firstDayStr = toLocalYMD(new Date(year, month, 1));
+    const lastDayStr = toLocalYMD(new Date(year, month + 1, 0));
     
     const { data: expensesData, error: expensesError } = await supabase.from('expenses')
       .select('*')
@@ -190,13 +190,6 @@ export default function SettlementPage() {
     setMonthlyStatus(newStatus);
     const { error } = await supabase.from('monthly_settlements').upsert({ month: monthKey, is_paid: newStatus.is_paid, is_received: newStatus.is_received, updated_at: new Date().toISOString() });
     if (error) { console.error(error); setMonthlyStatus(monthlyStatus); alert('更新失敗'); }
-  };
-
-  const changeMonth = (amount: number) => {
-    const newDate = new Date(currentMonth);
-    newDate.setMonth(newDate.getMonth() + amount);
-    setCurrentMonth(newDate);
-    setVisibleCount(10);
   };
 
   const handleDeleteClick = (id: number) => {
@@ -357,12 +350,7 @@ export default function SettlementPage() {
 
       <PageHeader title="精算" subtitle="ふたりの日常の支出を月ごとに精算します" isDemoMode={isDemoMode} />
 
-      {/* 月の切り替え */}
-      <Card className="flex items-center justify-between p-1.5 mb-6">
-        <button onClick={() => changeMonth(-1)} className="p-3 rounded-2xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition" aria-label="前の月"><ChevronLeft size={20} /></button>
-        <span className="font-black text-lg text-slate-800 tabular">{monthLabel}</span>
-        <button onClick={() => changeMonth(1)} className="p-3 rounded-2xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition" aria-label="次の月"><ChevronRight size={20} /></button>
-      </Card>
+      <MonthSwitcher month={currentMonth} onChange={(m) => { setCurrentMonth(m); setVisibleCount(10); }} />
 
       {loading ? <Loading /> : (
         <>

@@ -2,38 +2,46 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { ScanLine, Wallet, Plane, ArrowLeft, CheckCircle2, Clock, Send, X, Lock, ChevronDown, HelpCircle } from 'lucide-react';
+import { ScanLine, Wallet, Plane, UserRound, ArrowLeft, CheckCircle2, Clock, Send, X, Lock, ChevronDown, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
 import type { Category } from '../lib/categories';
 
 // 画面をまたいで使う見た目の部品。色・角丸・余白はここでそろえる。
-//   日常 = ネイビー(slate-800) / 旅行 = スカイ(sky-500) / おごり = アンバー
+//   日常 = ネイビー(slate-800) / 旅行 = スカイ(sky-500) / 個人 = バイオレット(violet-500) / おごり = アンバー
 
-export type Tone = 'daily' | 'trip';
+export type Tone = 'daily' | 'trip' | 'personal';
 
 const toneAccent: Record<Tone, string> = {
   daily: 'bg-slate-800',
   trip: 'bg-sky-500',
+  personal: 'bg-violet-500',
+};
+
+const toneBackground: Record<Tone, string> = {
+  daily: 'bg-gradient-to-b from-slate-50 to-slate-100',
+  trip: 'bg-gradient-to-b from-sky-50 to-slate-100',
+  personal: 'bg-gradient-to-b from-violet-50 to-slate-100',
 };
 
 // ---------- 画面の枠 ----------
 
 const NAV_ITEMS = [
-  { href: '/', label: '記録', icon: ScanLine, match: (p: string) => p === '/' },
-  { href: '/settlement', label: '精算', icon: Wallet, match: (p: string) => p.startsWith('/settlement') },
-  { href: '/trips', label: '旅行', icon: Plane, match: (p: string) => p.startsWith('/trips') },
+  { href: '/', label: '記録', icon: ScanLine, match: (p: string) => p === '/', activeBg: 'bg-slate-100' },
+  { href: '/settlement', label: '精算', icon: Wallet, match: (p: string) => p.startsWith('/settlement'), activeBg: 'bg-slate-100' },
+  { href: '/trips', label: '旅行', icon: Plane, match: (p: string) => p.startsWith('/trips'), activeBg: 'bg-sky-100 text-sky-600' },
+  { href: '/personal', label: '個人', icon: UserRound, match: (p: string) => p.startsWith('/personal'), activeBg: 'bg-violet-100 text-violet-600' },
 ];
 
 function BottomNav() {
   const pathname = usePathname();
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-white/85 backdrop-blur-xl border-t border-slate-200/70 pb-[env(safe-area-inset-bottom)]">
-      <ul className="max-w-md mx-auto grid grid-cols-3">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, match }) => {
+      <ul className="max-w-md mx-auto grid grid-cols-4">
+        {NAV_ITEMS.map(({ href, label, icon: Icon, match, activeBg }) => {
           const active = match(pathname);
           return (
             <li key={href}>
               <Link href={href} className={`flex flex-col items-center gap-1 py-2.5 text-[10px] font-bold transition-colors ${active ? 'text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}>
-                <span className={`px-4 py-1 rounded-full transition-colors ${active ? (href === '/trips' ? 'bg-sky-100 text-sky-600' : 'bg-slate-100') : ''}`}>
+                <span className={`px-4 py-1 rounded-full transition-colors ${active ? activeBg : ''}`}>
                   <Icon size={20} strokeWidth={active ? 2.5 : 2} />
                 </span>
                 {label}
@@ -47,9 +55,7 @@ function BottomNav() {
 }
 
 export function PageShell({ isDemoMode, tone = 'daily', nav = true, children }: { isDemoMode?: boolean; tone?: Tone; nav?: boolean; children: React.ReactNode }) {
-  const bg = isDemoMode
-    ? 'bg-gradient-to-b from-orange-50 to-slate-50'
-    : tone === 'trip' ? 'bg-gradient-to-b from-sky-50 to-slate-100' : 'bg-gradient-to-b from-slate-50 to-slate-100';
+  const bg = isDemoMode ? 'bg-gradient-to-b from-orange-50 to-slate-50' : toneBackground[tone];
   return (
     <div className={`min-h-screen text-slate-700 ${bg}`}>
       {isDemoMode && (
@@ -89,6 +95,18 @@ export function PageHeader({ title, subtitle, isDemoMode, back, actions }: {
         {actions && <div className="flex items-center gap-1 shrink-0">{actions}</div>}
       </div>
     </header>
+  );
+}
+
+// 月ごとに見る画面（精算・個人）の月の切り替え
+export function MonthSwitcher({ month, onChange }: { month: Date; onChange: (month: Date) => void }) {
+  const move = (diff: number) => onChange(new Date(month.getFullYear(), month.getMonth() + diff, 1));
+  return (
+    <Card className="flex items-center justify-between p-1.5 mb-6">
+      <button onClick={() => move(-1)} className="p-3 rounded-2xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition" aria-label="前の月"><ChevronLeft size={20} /></button>
+      <span className="font-black text-lg text-slate-800 tabular">{month.getFullYear()}年{month.getMonth() + 1}月</span>
+      <button onClick={() => move(1)} className="p-3 rounded-2xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition" aria-label="次の月"><ChevronRight size={20} /></button>
+    </Card>
   );
 }
 
@@ -146,7 +164,8 @@ export function ChoiceButton({ selected, onClick, children, className = '' }: { 
 
 export function CategoryPicker({ categories, value, onChange }: { categories: Category[]; value: string; onChange: (id: string) => void }) {
   return (
-    <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${categories.length}, minmax(0, 1fr))` }}>
+    // 6つ並ぶと拡大表示の iPhone(320pt) では文字が収まらないので、狭い幅では3列×2段にする
+    <div className={`grid gap-1.5 ${categories.length > 5 ? 'grid-cols-3 min-[360px]:grid-cols-6' : 'grid-cols-5'}`}>
       {categories.map((cat) => (
         <ChoiceButton key={cat.id} selected={value === cat.id} onClick={() => onChange(cat.id)} className="flex flex-col items-center py-2">
           <span className="text-lg leading-none mb-1">{cat.icon}</span>

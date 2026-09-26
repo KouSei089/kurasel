@@ -94,11 +94,11 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
           <Field label="店名 / 内容">
             <input value={formData.store_name} onChange={(e) => setFormData({ ...formData, store_name: e.target.value })} className={inputClass} />
           </Field>
-          <div className="flex gap-3">
+          <div className="flex flex-col min-[360px]:flex-row gap-3">
             <Field label="金額 (円)" className="flex-1 min-w-0">
               <input type="number" inputMode="numeric" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })} className={`${inputClass} text-right text-lg font-black tabular`} />
             </Field>
-            <Field label="日付" className="w-[46%] shrink-0">
+            <Field label="日付" className="w-full min-[360px]:w-[46%] shrink-0">
               <input type="date" value={formData.purchase_date} onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })} className={`${inputClass} !px-3 text-sm h-[54px]`} />
             </Field>
           </div>

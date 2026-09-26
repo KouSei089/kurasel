@@ -9,13 +9,14 @@ import SettledChip from '../../components/SettledChip';
 import ReceiptCapture from '../../components/ReceiptCapture';
 import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, ChoiceButton, SettlementCard, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../../components/ui';
 import { Check, Loader2, Paperclip, Pencil, Trash2, CheckCheck } from 'lucide-react';
-import { Trip, TripExpense, TRIP_CATEGORIES, toTripCategory, formatTripPeriod } from '../../lib/trips';
+import { Trip, TripExpense, TRIP_CATEGORIES, toTripCategory, formatTripPeriod, remainingDays } from '../../lib/trips';
+import { BudgetCard } from '../../components/BudgetCard';
 import { findCategory, sumByCategory } from '../../lib/categories';
 import { normalizeImage, scanReceipt, uploadReceipt, removeReceipts } from '../../lib/receipt';
 import { DEMO_TRIPS, DEMO_TRIP_EXPENSES } from '../../lib/demoData';
 import { useCurrentUser } from '../../lib/useCurrentUser';
+import { todayYMD } from '../../lib/date';
 
-const todayYMD = () => new Date().toISOString().split('T')[0];
 
 // 旅行期間外に今日の日付が入ると紛らわしいので、期間外なら開始日にする
 const defaultDateFor = (trip: Trip | null) => {
@@ -25,6 +26,9 @@ const defaultDateFor = (trip: Trip | null) => {
   if (trip.end_date && today > trip.end_date) return trip.start_date;
   return today;
 };
+
+// ダイアログの入力欄の既定値。予算入力で数字キーボードにしたあと、ほかのダイアログに残らないように毎回入れ直す
+const PROMPT_DEFAULTS = { inputMode: 'text' as 'text' | 'numeric', placeholder: '' };
 
 const formatYMD = (ymd: string) => ymd ? ymd.replaceAll('-', '/') : '';
 
@@ -59,6 +63,8 @@ export default function TripDetailPage() {
 
 
   const [modalConfig, setModalConfig] = useState({
+    inputMode: 'text' as 'text' | 'numeric',
+    placeholder: '',
     isOpen: false,
     type: 'confirm' as 'alert' | 'confirm' | 'prompt',
     title: '',
@@ -248,6 +254,7 @@ export default function TripDetailPage() {
     if (checkDemo()) return;
     const ids = expenses.filter((e) => !e.is_settled).map((e) => e.id);
     setModalConfig({
+      ...PROMPT_DEFAULTS,
       isOpen: true, type: 'confirm', title: 'まとめて精算済みにする', message: `未精算の記録 ${ids.length}件を、すべて精算済みにします。`, confirmText: '精算済みにする', defaultValue: '',
       onConfirm: async () => {
         closeModal();
@@ -261,6 +268,7 @@ export default function TripDetailPage() {
   const handleDeleteClick = (item: TripExpense) => {
     if (checkDemo()) return;
     setModalConfig({
+      ...PROMPT_DEFAULTS,
       isOpen: true, type: 'confirm', title: '記録の削除', message: `「${item.store_name}」を削除してもよろしいですか？`, confirmText: '削除する', defaultValue: '',
       onConfirm: async () => {
         closeModal();
@@ -278,6 +286,7 @@ export default function TripDetailPage() {
   const handleRenameClick = () => {
     if (checkDemo() || !trip) return;
     setModalConfig({
+      ...PROMPT_DEFAULTS,
       isOpen: true, type: 'prompt', title: '旅行名の変更', message: '', confirmText: '変更する', defaultValue: trip.name,
       onConfirm: async (value) => {
         closeModal();
@@ -290,9 +299,31 @@ export default function TripDetailPage() {
     });
   };
 
+  const handleBudgetClick = () => {
+    if (checkDemo() || !trip) return;
+    setModalConfig((prev) => ({
+      ...prev,
+      isOpen: true, type: 'prompt', title: trip.budget === null ? '予算を設定' : '予算の変更',
+      message: 'この旅行で使う目標の金額（円）\n空にすると予算を外します',
+      confirmText: '保存する', defaultValue: trip.budget === null ? '' : String(trip.budget),
+      inputMode: 'numeric', placeholder: '例: 100000',
+      onConfirm: async (value) => {
+        closeModal();
+        // 「10,000」「１００００」のような入力も受け付ける
+        const digits = (value ?? '').normalize('NFKC').replace(/[^0-9]/g, '');
+        const budget = digits ? Number(digits) : null;
+        if (budget === trip.budget) return;
+        const { error } = await supabase.from('trips').update({ budget, updated_at: new Date().toISOString() }).eq('id', trip.id);
+        if (error) { console.error(error); alert('保存に失敗しました'); return; }
+        setTrip({ ...trip, budget });
+      },
+    }));
+  };
+
   const handleDeleteTripClick = () => {
     if (checkDemo() || !trip) return;
     setModalConfig({
+      ...PROMPT_DEFAULTS,
       isOpen: true, type: 'confirm', title: '旅行の削除', message: `「${trip.name}」と、その記録 ${expenses.length}件をすべて削除します。\n元に戻せません。`, confirmText: '削除する', defaultValue: '',
       onConfirm: async () => {
         closeModal();
@@ -326,7 +357,7 @@ export default function TripDetailPage() {
       }
     }
 
-    setModalConfig({ isOpen: true, type: 'confirm', title, message, confirmText, defaultValue: '', onConfirm: () => executeToggleStatus(type) });
+    setModalConfig({ ...PROMPT_DEFAULTS, isOpen: true, type: 'confirm', title, message, confirmText, defaultValue: '', onConfirm: () => executeToggleStatus(type) });
   };
 
   const executeToggleStatus = async (type: 'paid' | 'received') => {
@@ -354,6 +385,8 @@ export default function TripDetailPage() {
   const totalAmount = totalMe + totalPartner;
   const excludedAmount = excluded.reduce((sum, e) => sum + e.amount, 0);
   const settledAmount = settled.reduce((sum, e) => sum + e.amount, 0);
+  // 予算と比べるのは、おごり・精算済みも含めた支出すべて
+  const spentTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
   const splitAmount = Math.round(totalAmount / 2);
   const balance = totalMe - splitAmount;
 
@@ -370,7 +403,7 @@ export default function TripDetailPage() {
 
   return (
     <PageShell isDemoMode={isDemoMode} tone="trip">
-      <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText={modalConfig.confirmText} defaultValue={modalConfig.defaultValue} />
+      <Modal isOpen={modalConfig.isOpen} onClose={closeModal} type={modalConfig.type} title={modalConfig.title} message={modalConfig.message} onConfirm={modalConfig.onConfirm} confirmText={modalConfig.confirmText} defaultValue={modalConfig.defaultValue} inputMode={modalConfig.inputMode} placeholder={modalConfig.placeholder} />
 
       <PageHeader
         title={trip?.name ?? '　'}
@@ -408,6 +441,8 @@ export default function TripDetailPage() {
             </>}
           />
 
+          <BudgetCard budget={trip.budget} spent={spentTotal} days={remainingDays(trip, todayYMD())} onEdit={handleBudgetClick} />
+
           <CategoryBreakdown title="カテゴリ別" items={sumByCategory(TRIP_CATEGORIES, included)} />
 
           {/* 入力フォーム */}
@@ -423,11 +458,11 @@ export default function TripDetailPage() {
                 <Field label="店名 / 内容">
                   <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="新幹線, 旅館など" className={inputClass} />
                 </Field>
-                <div className="flex gap-3">
+                <div className="flex flex-col min-[360px]:flex-row gap-3">
                   <Field label="金額 (円)" className="flex-1 min-w-0">
                     <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={`${inputClass} text-right text-xl font-black tabular`} />
                   </Field>
-                  <Field label="日付" className="w-[46%] shrink-0">
+                  <Field label="日付" className="w-full min-[360px]:w-[46%] shrink-0">
                     <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className={`${inputClass} !px-3 text-sm h-[56px]`} />
                   </Field>
                 </div>
