@@ -7,7 +7,7 @@ export type ScanResult = {
   store_name?: string;
   amount?: number;
   date?: string;
-  category?: string; // 日常用のカテゴリ (food / daily / eatout / transport / other)
+  category?: string; // 日常用のカテゴリ（DAILY_CATEGORIES の id）
 };
 
 // iPhoneのHEICはそのままだとプレビューもAI解析もできないのでJPEGに変換する

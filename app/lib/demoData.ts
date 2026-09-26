@@ -50,7 +50,7 @@ export const DEMO_EXPENSES = [
     purchase_date: '2024-02-05',
     created_at: '2024-02-05T00:00:00',
     paid_by: 'パートナー',
-    category: 'other',
+    category: 'housing',
     reactions: { 'あなた': 'please' },
     comments: [{ id: 'c2', user: 'あなた', text: '暖房使いすぎたかも…ありがとう！', timestamp: '2024-02-05T12:00:00' }],
     receipt_url: null,
@@ -122,7 +122,7 @@ export const DEMO_PERSONAL_EXPENSES = [
 export const DEMO_SUBSCRIPTIONS = [
   { id: 5501, owner: 'あなた', name: 'Netflix', amount: 1590, cycle: 'monthly' as const, daysFromToday: 3, category: 'hobby', is_active: true, created_at: '2024-01-01T00:00:00' },
   { id: 5502, owner: 'あなた', name: 'Spotify', amount: 980, cycle: 'monthly' as const, daysFromToday: 12, category: 'hobby', is_active: true, created_at: '2024-01-01T00:00:00' },
-  { id: 5503, owner: 'あなた', name: 'iCloud+', amount: 400, cycle: 'monthly' as const, daysFromToday: 20, category: 'other', is_active: true, created_at: '2024-01-01T00:00:00' },
-  { id: 5504, owner: 'あなた', name: 'Amazonプライム', amount: 5900, cycle: 'yearly' as const, daysFromToday: 140, category: 'other', is_active: true, created_at: '2024-01-01T00:00:00' },
+  { id: 5503, owner: 'あなた', name: 'iCloud+', amount: 400, cycle: 'monthly' as const, daysFromToday: 20, category: 'digital', is_active: true, created_at: '2024-01-01T00:00:00' },
+  { id: 5504, owner: 'あなた', name: 'Amazonプライム', amount: 5900, cycle: 'yearly' as const, daysFromToday: 140, category: 'hobby', is_active: true, created_at: '2024-01-01T00:00:00' },
   { id: 5505, owner: 'あなた', name: 'ジム', amount: 7700, cycle: 'monthly' as const, daysFromToday: 9, category: 'hobby', is_active: false, created_at: '2024-01-01T00:00:00' },
 ];

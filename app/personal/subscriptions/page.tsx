@@ -35,7 +35,7 @@ export default function SubscriptionsPage() {
   const [amount, setAmount] = useState('');
   const [cycle, setCycle] = useState<Cycle>('monthly');
   const [nextDate, setNextDate] = useState(todayYMD);
-  const [category, setCategory] = useState('hobby');
+  const [category, setCategory] = useState('digital');
   const [isSaving, setIsSaving] = useState(false);
 
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', confirmText: 'OK', onConfirm: () => {} });
@@ -81,7 +81,7 @@ export default function SubscriptionsPage() {
     setAmount('');
     setCycle('monthly');
     setNextDate(todayYMD());
-    setCategory('hobby');
+    setCategory('digital');
   };
 
   const handleSave = async () => {

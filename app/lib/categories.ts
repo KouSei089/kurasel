@@ -1,13 +1,19 @@
-// 日常の支出カテゴリ。入力・編集・精算・グラフで同じ定義を使う。
-// bar はカテゴリ別集計の棒の色（Tailwind が拾えるようクラス名をそのまま書く）
+// 支出カテゴリ。入力・編集・精算・グラフで同じ定義を使う。
+// id は DB に保存されるので、一度使った id は変えない・消さない（名前や順番は変えてよい）。
+// bar はカテゴリ別集計の棒の色（Tailwind が拾えるようクラス名をそのまま書く）。
+// short は入力欄のボタン用の短い名前（狭い iPhone でも収まるように）
 
-export type Category = { id: string; icon: string; label: string; bar: string };
+export type Category = { id: string; icon: string; label: string; short?: string; bar: string };
 
+// ふたりの日常の支出
 export const DAILY_CATEGORIES: Category[] = [
   { id: 'food', icon: '🥦', label: '食費', bar: 'bg-emerald-400' },
-  { id: 'daily', icon: '🧻', label: '日用品', bar: 'bg-amber-400' },
   { id: 'eatout', icon: '🍻', label: '外食', bar: 'bg-rose-400' },
+  { id: 'daily', icon: '🧻', label: '日用品', bar: 'bg-amber-400' },
+  { id: 'housing', icon: '🏠', label: '住まい・光熱', short: '住まい', bar: 'bg-teal-400' },
+  { id: 'digital', icon: '📱', label: '通信・デジタル', short: '通信', bar: 'bg-indigo-400' },
   { id: 'transport', icon: '🚃', label: '交通', bar: 'bg-sky-400' },
+  { id: 'health', icon: '💊', label: '医療・健康', short: '医療', bar: 'bg-pink-400' },
   { id: 'other', icon: '📦', label: 'その他', bar: 'bg-slate-400' },
 ];
 
@@ -23,13 +29,17 @@ export const sumByCategory = (categories: Category[], items: { amount: number; c
     }))
     .filter((c) => c.value > 0);
 
-// 個人の支出カテゴリ。ふたりの家計にはない「趣味」「服・美容」を足している
+// 個人の支出。ふたりの家計にはない「趣味・娯楽」「服・美容」「学び・仕事」がある。
+// AI・システム使用料・スマホ代・クラウドなどは「デジタル・通信」
 export const PERSONAL_CATEGORIES: Category[] = [
   { id: 'meal', icon: '🍙', label: '食事', bar: 'bg-rose-400' },
-  { id: 'hobby', icon: '🎮', label: '趣味', bar: 'bg-violet-400' },
-  { id: 'fashion', icon: '👕', label: '服・美容', bar: 'bg-pink-400' },
   { id: 'daily', icon: '🧻', label: '日用品', bar: 'bg-amber-400' },
+  { id: 'fashion', icon: '👕', label: '服・美容', bar: 'bg-pink-400' },
+  { id: 'hobby', icon: '🎮', label: '趣味・娯楽', short: '趣味', bar: 'bg-violet-400' },
+  { id: 'digital', icon: '💻', label: 'デジタル・通信', short: 'デジタル', bar: 'bg-indigo-400' },
+  { id: 'learning', icon: '📚', label: '学び・仕事', short: '学び', bar: 'bg-teal-400' },
   { id: 'transport', icon: '🚃', label: '交通', bar: 'bg-sky-400' },
+  { id: 'health', icon: '💊', label: '医療・健康', short: '医療', bar: 'bg-emerald-400' },
   { id: 'other', icon: '📦', label: 'その他', bar: 'bg-slate-400' },
 ];
 
@@ -38,7 +48,9 @@ export const toPersonalCategory = (dailyCategory?: string) => {
   switch (dailyCategory) {
     case 'food': case 'eatout': return 'meal';
     case 'daily': return 'daily';
+    case 'digital': return 'digital';
     case 'transport': return 'transport';
+    case 'health': return 'health';
     default: return 'other';
   }
 };

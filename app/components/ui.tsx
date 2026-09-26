@@ -162,14 +162,21 @@ export function ChoiceButton({ selected, onClick, children, className = '' }: { 
   );
 }
 
+// 数に合わせて段を組む。拡大表示の iPhone(320pt) でも文字が収まるよう、狭い幅では列を減らす
+const pickerColumns = (count: number) => {
+  if (count <= 5) return 'grid-cols-5';
+  if (count === 6) return 'grid-cols-3 min-[360px]:grid-cols-6'; // 3×2 / 6×1
+  if (count === 8) return 'grid-cols-4'; // 4×2
+  return 'grid-cols-3 min-[360px]:grid-cols-5'; // 9つなら 3×3 / 5+4
+};
+
 export function CategoryPicker({ categories, value, onChange }: { categories: Category[]; value: string; onChange: (id: string) => void }) {
   return (
-    // 6つ並ぶと拡大表示の iPhone(320pt) では文字が収まらないので、狭い幅では3列×2段にする
-    <div className={`grid gap-1.5 ${categories.length > 5 ? 'grid-cols-3 min-[360px]:grid-cols-6' : 'grid-cols-5'}`}>
+    <div className={`grid gap-1.5 ${pickerColumns(categories.length)}`}>
       {categories.map((cat) => (
-        <ChoiceButton key={cat.id} selected={value === cat.id} onClick={() => onChange(cat.id)} className="flex flex-col items-center py-2">
+        <ChoiceButton key={cat.id} selected={value === cat.id} onClick={() => onChange(cat.id)} className="flex flex-col items-center py-2 min-w-0">
           <span className="text-lg leading-none mb-1">{cat.icon}</span>
-          <span className="text-[10px] font-bold whitespace-nowrap">{cat.label}</span>
+          <span className="text-[10px] font-bold whitespace-nowrap">{cat.short ?? cat.label}</span>
         </ChoiceButton>
       ))}
     </div>

@@ -6,7 +6,8 @@ import { NextResponse } from "next/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
-const CATEGORIES = ["food", "daily", "eatout", "transport", "other"];
+// app/lib/categories.ts の DAILY_CATEGORIES の id と揃える
+const CATEGORIES = ["food", "eatout", "daily", "housing", "digital", "transport", "health", "other"];
 
 type HistoryItem = {
   store_name: string;
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
       - amount: 金額（円）。正の整数。「¥」「円」「-」「,」は付けない
       - date: 取引日。画面上部の「2026年07月」のような月表示と、「7月9日」のような日付の見出しから組み立てる。
         年がどこにも書かれていない場合は、今日（${todayYMD}）より未来にならない一番近い年を補う
-      - category: 'food'(食費・スーパー・商店), 'daily'(日用品・ドラッグストア), 'eatout'(外食・カフェ・食堂), 'transport'(交通・船・バス), 'other'(その他) から推測
+      - category: 'food'(食費・スーパー・商店), 'eatout'(外食・カフェ・食堂), 'daily'(日用品・ドラッグストア), 'housing'(家賃・電気・ガス・水道), 'digital'(スマホ・ネット・AIやアプリの利用料・システム使用料), 'transport'(交通・船・バス), 'health'(病院・薬局), 'other'(その他) から推測
       - kind: お店での支払いなら "payment"、人へ送ったお金（「送付」「送金」など）なら "transfer"
 
       出ていったお金かどうかの見分け方:

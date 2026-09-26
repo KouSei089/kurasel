@@ -34,7 +34,7 @@ export async function POST(req: Request) {
       - store_name (店名: 文字列。不明なら"不明")
       - amount (合計金額: 数値)
       - date (日付: YYYY-MM-DD形式)
-      - category (カテゴリ: 'food'(食費), 'daily'(日用品), 'eatout'(外食), 'transport'(交通費), 'other'(その他) から推測)
+      - category (カテゴリ: 'food'(食費・スーパー), 'eatout'(外食・カフェ), 'daily'(日用品・ドラッグストア), 'housing'(家賃・電気・ガス・水道・家具), 'digital'(スマホ・ネット・AIやアプリの利用料・サブスク・システム使用料), 'transport'(交通費・ガソリン), 'health'(病院・薬局の薬・健康), 'other'(その他) から推測)
       JSONのみを出力してください。余計なマークダウンは不要です。
     `;
 
