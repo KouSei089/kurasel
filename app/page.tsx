@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
-import { Check, Loader2, LogOut } from 'lucide-react';
+import { Check, Loader2, LogOut, Smartphone, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import Modal from './components/Modal';
 import ExcludedToggle from './components/ExcludedToggle';
 import ReceiptCapture from './components/ReceiptCapture';
@@ -10,6 +11,7 @@ import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, butto
 import { normalizeImage, scanReceipt, uploadReceipt } from './lib/receipt';
 import { DAILY_CATEGORIES } from './lib/categories';
 import { useCurrentUser } from './lib/useCurrentUser';
+import { todayYMD } from './lib/date';
 
 export default function Home() {
   const router = useRouter();
@@ -22,7 +24,7 @@ export default function Home() {
 
   const [storeName, setStoreName] = useState('');
   const [amount, setAmount] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+  const [purchaseDate, setPurchaseDate] = useState(todayYMD);
   const [category, setCategory] = useState('food');
   const [isExcluded, setIsExcluded] = useState(false);
 
@@ -188,11 +190,11 @@ export default function Home() {
           <Field label="店名 / 内容">
             <input type="text" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="コンビニ, スーパーなど" className={inputClass} />
           </Field>
-          <div className="flex gap-3">
+          <div className="flex flex-col min-[360px]:flex-row gap-3">
             <Field label="金額 (円)" className="flex-1 min-w-0">
               <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={`${inputClass} text-right text-xl font-black tabular`} />
             </Field>
-            <Field label="日付" className="w-[46%] shrink-0">
+            <Field label="日付" className="w-full min-[360px]:w-[46%] shrink-0">
               <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className={`${inputClass} !px-3 text-sm h-[56px]`} />
             </Field>
           </div>
@@ -206,6 +208,18 @@ export default function Home() {
           {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Check strokeWidth={3} size={20} />}記録する
         </button>
       </Card>
+
+      {/* ハーンPay などは外部連携がないので、利用履歴のスクショからまとめて取り込む */}
+      <Link href="/import" className="mt-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-white/70 border border-white shadow-sm hover:bg-white transition-colors">
+        <span className="flex items-center gap-3">
+          <span className="p-2 rounded-full bg-slate-100 text-slate-500"><Smartphone size={16} /></span>
+          <span>
+            <span className="block text-sm font-bold text-slate-700">決済アプリの履歴から取り込む</span>
+            <span className="block text-[10px] text-slate-400">ハーンPayなどのスクショからまとめて登録</span>
+          </span>
+        </span>
+        <ChevronRight size={16} className="text-slate-300 shrink-0" />
+      </Link>
     </PageShell>
   );
 }

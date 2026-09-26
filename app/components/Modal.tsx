@@ -11,6 +11,8 @@ type ModalProps = {
   cancelText?: string;
   onConfirm: (inputValue?: string) => void;
   defaultValue?: string; // prompt用の初期値
+  inputMode?: 'text' | 'numeric'; // prompt の入力欄。numeric だと iPhone で数字キーボードになる
+  placeholder?: string;
 };
 
 export default function Modal({
@@ -23,6 +25,8 @@ export default function Modal({
   cancelText = 'キャンセル',
   onConfirm,
   defaultValue = '',
+  inputMode = 'text',
+  placeholder,
 }: ModalProps) {
   const [inputValue, setInputValue] = useState(defaultValue);
 
@@ -50,6 +54,8 @@ export default function Modal({
           {type === 'prompt' && (
             <input
               type="text"
+              inputMode={inputMode}
+              placeholder={placeholder}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               className="w-full mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 font-bold text-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-200/70"

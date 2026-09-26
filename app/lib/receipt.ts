@@ -41,6 +41,36 @@ export const scanReceipt = async (file: File): Promise<ScanResult> => {
   return data;
 };
 
+// 決済アプリの利用履歴のスクリーンショットから読み取った1件分
+export type HistoryItem = {
+  store_name: string;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  category: string; // 日常用のカテゴリ
+  kind: 'payment' | 'transfer'; // お店への支払い / 人への送付
+};
+
+// 利用履歴のスクリーンショットから支払いをまとめて読み取る。
+// スクショはそのままだと数MBあり、サーバーへの送信上限にかかるので、文字が読める大きさのまま軽くして送る
+export const scanHistory = async (file: File, today: string): Promise<HistoryItem[]> => {
+  const compressed = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 2400, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.85 });
+  const base64Data = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.readAsDataURL(compressed);
+  });
+
+  const res = await fetch('/api/analyze-history', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageBase64: base64Data, mimeType: 'image/jpeg', today }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '読み取りに失敗しました');
+  return data.items ?? [];
+};
+
 export const uploadReceipt = async (file: File) => {
   try {
     const options = { maxSizeMB: 0.1, maxWidthOrHeight: 1024, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.6 };
