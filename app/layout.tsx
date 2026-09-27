@@ -19,19 +19,19 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-// アプリ名は「Kurasel」、キャッチコピーは「暮らしと精算」で統一する。
+// アプリ名は「暮らしと精算」で統一する（以前の「Kurasel」から改名）。
 // iPhone のホーム画面に出る名前は appleWebApp.title、Android などは manifest の short_name。
 // アイコンは app/icon.png（ファビコン）、app/apple-icon.png（iPhone のホーム画面）、
 // public/icon-*.png（manifest）。iPhone は透明部分を黒で塗るので、どれも透明なしの正方形にしている
 export const metadata: Metadata = {
-  title: "Kurasel | 暮らしと精算",
+  title: "暮らしと精算",
   description: "レシートを撮るだけ。ふたりの日常と旅行の支出を記録して、かんたんに精算。",
-  applicationName: "Kurasel",
+  applicationName: "暮らしと精算",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Kurasel",
+    title: "暮らしと精算",
   },
 };
 
