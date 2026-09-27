@@ -22,7 +22,7 @@ const demoSubscriptions = (): Subscription[] => DEMO_SUBSCRIPTIONS.map(({ daysFr
 });
 
 export default function SubscriptionsPage() {
-  const { isDemoMode, myUserName } = useCurrentUser();
+  const { isDemoMode, myUserId, myUserName } = useCurrentUser();
   const formRef = useRef<HTMLDivElement>(null);
 
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
@@ -42,13 +42,13 @@ export default function SubscriptionsPage() {
   const closeModal = () => setModal((m) => ({ ...m, isOpen: false }));
 
   useEffect(() => {
-    if (!myUserName || isDemoMode) return;
+    if (!myUserId || isDemoMode) return;
     let cancelled = false;
     // 先に支払日を過ぎた分を記録して、次の支払日を進めてから一覧を読む
-    syncSubscriptions(myUserName).then((recorded) => {
+    syncSubscriptions(myUserId).then((recorded) => {
       if (cancelled) return;
       if (recorded > 0) setRecordedNotice(recorded);
-      return supabase.from('subscriptions').select('*').eq('owner', myUserName).then(({ data, error }) => {
+      return supabase.from('subscriptions').select('*').eq('owner', myUserId).then(({ data, error }) => {
         if (cancelled) return;
         if (error) console.error(error);
         else setSubscriptions(data || []);
@@ -56,7 +56,7 @@ export default function SubscriptionsPage() {
       });
     });
     return () => { cancelled = true; };
-  }, [myUserName, isDemoMode, reloadKey]);
+  }, [myUserId, isDemoMode, reloadKey]);
 
   const shown = isDemoMode ? demoSubscriptions() : subscriptions;
   const isLoading = !isDemoMode && loading;
@@ -98,7 +98,7 @@ export default function SubscriptionsPage() {
     };
     const { error } = editingId
       ? await supabase.from('subscriptions').update(values).eq('id', editingId)
-      : await supabase.from('subscriptions').insert({ ...values, owner: myUserName, is_active: true });
+      : await supabase.from('subscriptions').insert({ ...values, owner: myUserId, is_active: true });
     setIsSaving(false);
     if (error) { console.error(error); alert('保存に失敗しました'); return; }
     resetForm();

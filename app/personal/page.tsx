@@ -14,11 +14,11 @@ import { useCurrentUser } from '../lib/useCurrentUser';
 import { toLocalYMD } from '../lib/date';
 
 // 自分だけの支出。ふたりの家計・精算とは別テーブル(personal_expenses)で、
-// owner が自分の記録だけを出す。相手の画面には出ない。
+// owner（自分のID）の記録だけを出す。DB の RLS でも本人しか読めない。
 
 type PersonalExpense = {
   id: number;
-  owner: string;
+  owner: string; // 持ち主のID
   store_name: string;
   amount: number;
   purchase_date: string;
@@ -31,7 +31,7 @@ type PersonalExpense = {
 const formatYMD = (ymd: string) => (ymd ? ymd.replaceAll('-', '/') : '');
 
 export default function PersonalPage() {
-  const { isDemoMode, myUserName } = useCurrentUser();
+  const { isDemoMode, myUserId, myUserName, householdId } = useCurrentUser();
   const formRef = useRef<HTMLDivElement>(null);
 
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -61,14 +61,14 @@ export default function PersonalPage() {
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
 
   useEffect(() => {
-    if (!myUserName || isDemoMode) return;
+    if (!myUserId || isDemoMode) return;
     let cancelled = false;
     const first = toLocalYMD(month);
     const last = toLocalYMD(new Date(month.getFullYear(), month.getMonth() + 1, 0));
     supabase
       .from('personal_expenses')
       .select('*')
-      .eq('owner', myUserName)
+      .eq('owner', myUserId)
       .gte('purchase_date', first)
       .lte('purchase_date', last)
       .order('purchase_date', { ascending: false })
@@ -80,23 +80,23 @@ export default function PersonalPage() {
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [myUserName, isDemoMode, month, reloadKey]);
+  }, [myUserId, isDemoMode, month, reloadKey]);
 
   // サブスク: 支払日を過ぎた分を個人の支出に記録してから、まとめ用に一覧を読む。
   // 記録が増えたら支出の一覧も読み直す
   const [subscriptions, setSubscriptions] = useState<Pick<Subscription, 'id' | 'name' | 'amount' | 'cycle' | 'next_billing_date' | 'is_active'>[]>([]);
   useEffect(() => {
-    if (!myUserName || isDemoMode) return;
+    if (!myUserId || isDemoMode) return;
     let cancelled = false;
-    syncSubscriptions(myUserName).then((recorded) => {
+    syncSubscriptions(myUserId).then((recorded) => {
       if (cancelled) return;
       if (recorded > 0) setReloadKey((k) => k + 1);
-      return supabase.from('subscriptions').select('id, name, amount, cycle, next_billing_date, is_active').eq('owner', myUserName).eq('is_active', true).then(({ data }) => {
+      return supabase.from('subscriptions').select('id, name, amount, cycle, next_billing_date, is_active').eq('owner', myUserId).eq('is_active', true).then(({ data }) => {
         if (!cancelled && data) setSubscriptions(data);
       });
     });
     return () => { cancelled = true; };
-  }, [myUserName, isDemoMode]);
+  }, [myUserId, isDemoMode]);
 
   const shownSubscriptions = isDemoMode
     ? DEMO_SUBSCRIPTIONS.filter((s) => s.is_active).map((s) => { const d = new Date(); d.setDate(d.getDate() + s.daysFromToday); return { ...s, next_billing_date: toLocalYMD(d) }; })
@@ -175,15 +175,15 @@ export default function PersonalPage() {
       if (editingId) {
         const update: typeof values & { receipt_url?: string | null } = { ...values };
         if (fileToUpload) {
-          update.receipt_url = await uploadReceipt(fileToUpload);
+          update.receipt_url = await uploadReceipt(fileToUpload, householdId);
           const old = expenses.find((e) => e.id === editingId)?.receipt_url;
           if (update.receipt_url && old) await removeReceipts([old]);
         }
         const { error } = await supabase.from('personal_expenses').update(update).eq('id', editingId);
         if (error) throw error;
       } else {
-        const receiptUrl = fileToUpload ? await uploadReceipt(fileToUpload) : null;
-        const { error } = await supabase.from('personal_expenses').insert({ ...values, owner: myUserName, receipt_url: receiptUrl });
+        const receiptUrl = fileToUpload ? await uploadReceipt(fileToUpload, householdId) : null;
+        const { error } = await supabase.from('personal_expenses').insert({ ...values, owner: myUserId, receipt_url: receiptUrl });
         if (error) throw error;
       }
 

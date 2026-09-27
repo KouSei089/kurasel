@@ -14,12 +14,12 @@ export type Entry = {
   amount: number;
   date: string; // YYYY-MM-DD
   category: string | null;
-  paid_by: string | null; // 個人は null（自分）
+  paid_by: string | null; // 払った人のID。個人は null（自分）
   is_excluded: boolean; // おごり
   trip_name?: string;
 };
 
-// 自分の負担分。ふたり・旅行は割り勘なので半分、おごりは払った人の全額、個人は全額
+// 自分の負担分。ふたり・旅行は割り勘なので半分、おごりは払った人の全額、個人は全額。me は自分のID
 export const myShare = (e: Entry, me: string) => {
   if (e.source === 'personal') return e.amount;
   if (e.is_excluded) return e.paid_by === me ? e.amount : 0;
@@ -55,7 +55,7 @@ export const trendMonths = (p: Period): string[] => {
   return months;
 };
 
-// 期間内の支出をまとめて読む。相手の個人の記録は読まない（自分の分だけ）
+// 期間内の支出をまとめて読む。個人の記録は自分の分だけ（me は自分のID。RLS でも相手の分は読めない）
 export const loadEntries = async (from: string, to: string, me: string): Promise<Entry[]> => {
   const [shared, trips, personal] = await Promise.all([
     supabase.from('expenses').select('id, store_name, amount, purchase_date, paid_by, category, is_excluded').gte('purchase_date', from).lte('purchase_date', to),

@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import { isSignedIn } from "../../lib/serverAuth";
 
 // 決済アプリ（ハーンPay など）の利用履歴のスクリーンショットから、支払いを複数件まとめて読み取る。
 // レシート1枚を読む /api/analyze-receipt の「履歴画面版」
@@ -53,6 +54,10 @@ export async function POST(req: Request) {
   try {
     if (!process.env.GOOGLE_API_KEY) {
       throw new Error("GOOGLE_API_KEY is not defined");
+    }
+
+    if (!(await isSignedIn(req))) {
+      return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
     }
 
     const { imageBase64, mimeType, today } = await req.json();

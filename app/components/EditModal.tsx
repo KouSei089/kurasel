@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useCurrentUser } from '../lib/useCurrentUser';
 import ExcludedToggle from './ExcludedToggle';
 import { Field, CategoryPicker, ChoiceButton, buttonClass, inputClass } from './ui';
 
@@ -23,7 +24,7 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
     paid_by: '',
     is_excluded: false,
   });
-  const [users, setUsers] = useState<{id: number, name: string}[]>([]);
+  const { members } = useCurrentUser();
   const [saving, setSaving] = useState(false);
 
   // 開いた対象が変わったらフォームを入れ直す。
@@ -44,16 +45,6 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
       });
     }
   }
-
-  // ユーザー一覧の取得は外部への問い合わせなのでeffectのまま
-  useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    supabase.from('users').select('id, name').order('id').then(({ data }) => {
-      if (!cancelled && data) setUsers(data);
-    });
-    return () => { cancelled = true; };
-  }, [isOpen]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -106,9 +97,9 @@ export default function EditModal({ isOpen, onClose, expense, onUpdate }: EditMo
           </Field>
           <Field label="支払った人">
             <div className="grid grid-cols-2 gap-2">
-              {users.map((u) => (
-                <ChoiceButton key={u.id} selected={formData.paid_by === u.name} onClick={() => setFormData({ ...formData, paid_by: u.name })} className="py-2.5 text-sm font-bold truncate px-2">
-                  {u.name}
+              {members.map((m) => (
+                <ChoiceButton key={m.id} selected={formData.paid_by === m.id} onClick={() => setFormData({ ...formData, paid_by: m.id })} className="py-2.5 text-sm font-bold truncate px-2">
+                  {m.name}
                 </ChoiceButton>
               ))}
             </div>

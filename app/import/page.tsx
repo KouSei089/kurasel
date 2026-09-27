@@ -43,7 +43,7 @@ export default function ImportPageWrapper() {
 }
 
 function ImportPage() {
-  const { isDemoMode, myUserName } = useCurrentUser();
+  const { isDemoMode, myUserId, myUserName } = useCurrentUser();
   const inputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
 
@@ -59,7 +59,7 @@ function ImportPage() {
     if (list.length === 0 || isDemoMode) return list;
     const dates = list.map((r) => r.date).sort();
     const query = dest === 'personal'
-      ? supabase.from('personal_expenses').select('purchase_date, amount').eq('owner', myUserName)
+      ? supabase.from('personal_expenses').select('purchase_date, amount').eq('owner', myUserId)
       : supabase.from('expenses').select('purchase_date, amount');
     const { data, error } = await query.gte('purchase_date', dates[0]).lte('purchase_date', dates[dates.length - 1]);
     if (error) { console.error(error); return list; }
@@ -127,8 +127,8 @@ function ImportPage() {
     setIsSaving(true);
     const base = selected.map((r) => ({ store_name: r.store_name.trim(), amount: r.amount, purchase_date: r.date, category: r.category }));
     const { error } = destination === 'personal'
-      ? await supabase.from('personal_expenses').insert(base.map((r) => ({ ...r, owner: myUserName })))
-      : await supabase.from('expenses').insert(base.map((r) => ({ ...r, paid_by: myUserName })));
+      ? await supabase.from('personal_expenses').insert(base.map((r) => ({ ...r, owner: myUserId })))
+      : await supabase.from('expenses').insert(base.map((r) => ({ ...r, paid_by: myUserId })));
     setIsSaving(false);
 
     if (error) { console.error(error); alert('登録に失敗しました'); return; }
