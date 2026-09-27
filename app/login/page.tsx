@@ -88,14 +88,14 @@ export default function LoginPage() {
         <div className="flex flex-col items-center justify-center mb-8 relative z-10">
           <img 
             src="/icon-512.png" 
-            alt="Kurasel Icon" 
+            alt="暮らしと精算のアイコン" 
             className="w-20 h-20 rounded-3xl shadow-lg mb-4 object-cover" 
           />
           <h1 className="text-3xl font-black text-slate-800 tracking-tight leading-none mb-1">
-            Kurasel
-          </h1>
-          <p className="text-sm font-bold text-slate-400 tracking-widest">
             暮らしと精算
+          </h1>
+          <p className="text-sm font-bold text-slate-400 tracking-wider">
+            ふたりの家計・旅行・個人の記録
           </p>
         </div>
 

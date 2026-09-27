@@ -1,11 +1,9 @@
-# Kurasel 🏡
+# 暮らしと精算 🏡
 
-**暮らしと精算 (Living & Settlement)**
-
-**Kurasel** は、ふたりの暮らしとお金を整える、シンプルでモダンな精算アプリです。
+**暮らしと精算**（旧名 Kurasel）は、ふたりの暮らしとお金を整える、シンプルでモダンな精算アプリです。
 レシートを撮るだけでAIが自動入力。面倒な計算はアプリに任せて、支払いや受け取りのステータスもひと目で管理。「お金のやり取り」を事務作業から「心地よいコミュニケーション」へ変えます。
 
-<img src="/public/icon-512.png" alt="Kurasel App Icon" width="120" style="border-radius: 24px;">
+<img src="/public/icon-512.png" alt="暮らしと精算のアイコン" width="120" style="border-radius: 24px;">
 
 ## ✨ 特徴 (Features)
 

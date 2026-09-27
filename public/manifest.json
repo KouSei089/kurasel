@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Kurasel - 暮らしと精算",
-  "short_name": "Kurasel",
+  "name": "暮らしと精算",
+  "short_name": "暮らしと精算",
   "description": "レシートを撮るだけ。ふたりの日常と旅行の支出を記録して、かんたんに精算。",
   "lang": "ja",
   "start_url": "/",
