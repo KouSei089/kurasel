@@ -7,7 +7,9 @@ import { ExcludedChip } from '../components/ExcludedToggle';
 import SettledChip from '../components/SettledChip';
 import { PageShell, PageHeader, Card, MonthSwitcher, SettlementCard, CategoryBreakdown, Toggle, EmptyState, Loading, buttonClass } from '../components/ui';
 import { Smile, MessageCircle, Send, Pencil, Trash2, X, Check, Paperclip, Sparkles, ChevronDown, CheckCheck } from 'lucide-react';
-import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
+import { DEMO_BUDGETS, DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
+import { MonthlyBudget } from '../components/MonthlyBudget';
+import { budgetProgress, loadBudgets, type Budget } from '../lib/budgets';
 import { findCategory, sumByCategory } from '../lib/categories';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { toLocalYMD } from '../lib/date';
@@ -89,6 +91,15 @@ export default function SettlementPage() {
   const [editingItem, setEditingItem] = useState<Expense | null>(null);
 
   const [visibleCount, setVisibleCount] = useState(10);
+
+  // ふたりの月の予算（毎月同じ額）
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  useEffect(() => {
+    if (!myUserId || isDemoMode) return;
+    let cancelled = false;
+    loadBudgets('shared', myUserId).then((b) => { if (!cancelled) setBudgets(b); });
+    return () => { cancelled = true; };
+  }, [myUserId, isDemoMode]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -403,6 +414,8 @@ export default function SettlementPage() {
               </Card>
             ))}
           </div>
+
+          <MonthlyBudget rows={budgetProgress(isDemoMode ? DEMO_BUDGETS.filter((b) => b.is_shared) : budgets, included)} scope="shared" monthLabel={`${currentMonth.getMonth() + 1}月`} />
 
           <CategoryBreakdown title="カテゴリ別" items={sumByCategory(included)} />
 

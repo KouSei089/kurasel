@@ -8,7 +8,9 @@ import { Check, Loader2, Lock, Paperclip, Pencil, Trash2, Smartphone, Repeat, Ch
 import Link from 'next/link';
 import { findCategory, normalizeCategory, sumByCategory } from '../lib/categories';
 import { normalizeImage, scanReceipt, uploadReceipt, removeReceipts } from '../lib/receipt';
-import { DEMO_INCOMES, DEMO_PERSONAL_EXPENSES, DEMO_SUBSCRIPTIONS } from '../lib/demoData';
+import { DEMO_BUDGETS, DEMO_INCOMES, DEMO_PERSONAL_EXPENSES, DEMO_SUBSCRIPTIONS } from '../lib/demoData';
+import { MonthlyBudget } from '../components/MonthlyBudget';
+import { budgetProgress, loadBudgets, type Budget } from '../lib/budgets';
 import { Subscription, monthlyAmount, syncSubscriptions, daysUntil } from '../lib/subscriptions';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { toLocalYMD } from '../lib/date';
@@ -96,6 +98,15 @@ export default function PersonalPage() {
         if (!cancelled && data) setSubscriptions(data);
       });
     });
+    return () => { cancelled = true; };
+  }, [myUserId, isDemoMode]);
+
+  // 自分の月の予算（毎月同じ額）
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  useEffect(() => {
+    if (!myUserId || isDemoMode) return;
+    let cancelled = false;
+    loadBudgets('personal', myUserId).then((b) => { if (!cancelled) setBudgets(b); });
     return () => { cancelled = true; };
   }, [myUserId, isDemoMode]);
 
@@ -274,6 +285,8 @@ export default function PersonalPage() {
             </p>
             <p className="relative text-[11px] font-bold text-white/75 mt-2">{shownExpenses.length}件の記録 ・ ふたりの精算には含まれません</p>
           </div>
+
+          <MonthlyBudget rows={budgetProgress(isDemoMode ? DEMO_BUDGETS.filter((b) => !b.is_shared) : budgets, shownExpenses)} scope="personal" monthLabel={`${month.getMonth() + 1}月`} />
 
           <CategoryBreakdown title="カテゴリ別" items={sumByCategory(shownExpenses)} />
 
