@@ -50,7 +50,7 @@ export const DEMO_EXPENSES = [
     purchase_date: '2024-02-05',
     created_at: '2024-02-05T00:00:00',
     paid_by: 'パートナー',
-    category: 'housing',
+    category: 'electricity',
     reactions: { 'あなた': 'please' },
     comments: [{ id: 'c2', user: 'あなた', text: '暖房使いすぎたかも…ありがとう！', timestamp: '2024-02-05T12:00:00' }],
     receipt_url: null,
@@ -125,4 +125,13 @@ export const DEMO_SUBSCRIPTIONS = [
   { id: 5503, owner: 'あなた', name: 'iCloud+', amount: 400, cycle: 'monthly' as const, daysFromToday: 20, category: 'digital', is_active: true, created_at: '2024-01-01T00:00:00' },
   { id: 5504, owner: 'あなた', name: 'Amazonプライム', amount: 5900, cycle: 'yearly' as const, daysFromToday: 140, category: 'hobby', is_active: true, created_at: '2024-01-01T00:00:00' },
   { id: 5505, owner: 'あなた', name: 'ジム', amount: 7700, cycle: 'monthly' as const, daysFromToday: 9, category: 'hobby', is_active: false, created_at: '2024-01-01T00:00:00' },
+];
+
+// 収入（ふたりの収入と「あなた」の個人の収入）
+export const DEMO_INCOMES = [
+  { id: 4401, owner: 'あなた', is_shared: false, source: '株式会社サンプル', amount: 280000, received_date: '2024-02-25', category: 'salary', created_at: '2024-02-25T09:00:00' },
+  { id: 4402, owner: 'あなた', is_shared: false, source: 'ブログ広告', amount: 12000, received_date: '2024-02-15', category: 'side', created_at: '2024-02-15T09:00:00' },
+  { id: 4403, owner: 'パートナー', is_shared: true, source: '児童手当', amount: 20000, received_date: '2024-02-10', category: 'benefit', created_at: '2024-02-10T09:00:00' },
+  { id: 4404, owner: 'あなた', is_shared: false, source: '株式会社サンプル', amount: 280000, received_date: '2024-11-25', category: 'salary', created_at: '2024-11-25T09:00:00' },
+  { id: 4405, owner: 'パートナー', is_shared: true, source: '結婚祝い', amount: 50000, received_date: '2024-08-03', category: 'gift', created_at: '2024-08-03T09:00:00' },
 ];

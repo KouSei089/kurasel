@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { toLocalYMD } from './date';
+import type { Income } from './income';
 
 // 分析画面用に、ふたり・旅行・個人の支出を1つの形にそろえて扱う
 
@@ -79,4 +80,16 @@ export const loadEntries = async (from: string, to: string, me: string): Promise
       category: e.category, paid_by: null, is_excluded: false,
     })),
   ];
+};
+
+// 期間内の収入。ふたりの収入と、自分の個人の収入（me は自分のID。RLS でも相手の個人の収入は読めない）
+export const loadIncomes = async (from: string, to: string, me: string): Promise<Income[]> => {
+  const { data, error } = await supabase
+    .from('incomes')
+    .select('*')
+    .or(`is_shared.eq.true,owner.eq.${me}`)
+    .gte('received_date', from)
+    .lte('received_date', to);
+  if (error) console.error(error);
+  return data ?? [];
 };

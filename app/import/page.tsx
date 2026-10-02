@@ -7,7 +7,7 @@ import Modal from '../components/Modal';
 import { PageShell, PageHeader, Card, SectionTitle, ChoiceButton, buttonClass } from '../components/ui';
 import { Check, ImageUp, Loader2, AlertTriangle, Smartphone, Send } from 'lucide-react';
 import { scanHistory, type HistoryItem } from '../lib/receipt';
-import { CATEGORIES, normalizeCategory } from '../lib/categories';
+import { CATEGORIES, CATEGORY_GROUPS, normalizeCategory } from '../lib/categories';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { todayYMD } from '../lib/date';
 
@@ -197,7 +197,11 @@ function ImportPage() {
                   <div className="flex items-center gap-2 mt-2 pl-7">
                     <input type="date" value={r.date} onChange={(e) => updateRow(r.key, { date: e.target.value })} className="w-[8.5rem] shrink-0 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 bg-white" aria-label="日付" />
                     <select value={r.category} onChange={(e) => updateRow(r.key, { category: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 bg-white" aria-label="カテゴリ">
-                      {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                      {CATEGORY_GROUPS.map((g) => (
+                        <optgroup key={g.id} label={g.label}>
+                          {CATEGORIES.filter((c) => c.group === g.id).map((c) => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
                   {r.kind === 'transfer' && (

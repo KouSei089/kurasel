@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { ScanLine, Wallet, Plane, UserRound, ChartColumn, ArrowLeft, CheckCircle2, Clock, Send, X, Lock, ChevronDown, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
-import { FOLDED_COLOR, categoriesFor, normalizeCategory, type Category, type CategoryContext } from '../lib/categories';
+import { CATEGORIES, CATEGORY_GROUPS, FOLDED_COLOR, categoriesFor, normalizeCategory, type CategoryContext, type CategorySum } from '../lib/categories';
 
 // 画面をまたいで使う見た目の部品。色・角丸・余白はここでそろえる。
 //   日常 = ネイビー(slate-800) / 旅行 = スカイ(sky-500) / 個人 = バイオレット(violet-500) / おごり = アンバー
@@ -168,30 +168,46 @@ const pickerColumns = (count: number) => {
   if (count <= 5) return 'grid-cols-5';
   if (count === 6) return 'grid-cols-3 min-[360px]:grid-cols-6'; // 3×2 / 6×1
   if (count === 9) return 'grid-cols-3 min-[360px]:grid-cols-5'; // 3×3 / 5+4
-  return 'grid-cols-4'; // 8つなら 4×2、すべて表示の13なら 4×4
+  return 'grid-cols-4'; // 8つなら 4×2
 };
 
-// 分類の選択。画面ごとによく使う分類を先に出し、残りは「すべて表示」で開く。
-// 残りの分類が選ばれているとき（編集など）は、最初から開いておく
+// 分類の選択。画面ごとによく使う小分類を先に出し、「すべての分類」で大分類ごとに全部を開く。
+// よく使う分類以外が選ばれているとき（編集など）は、最初から開いておく
 export function CategoryPicker({ context, value, onChange }: { context: CategoryContext; value: string; onChange: (id: string) => void }) {
-  const { primary, rest } = categoriesFor(context);
+  const { primary, isPrimary } = categoriesFor(context);
   const [expanded, setExpanded] = useState(false);
   const selectedId = normalizeCategory(value);
-  const showAll = expanded || rest.some((c) => c.id === selectedId);
-  const shown = showAll ? [...primary, ...rest] : primary;
+  const selectedIsRest = !isPrimary(selectedId);
+  const showAll = expanded || selectedIsRest;
   return (
     <div>
-      <div className={`grid gap-1.5 ${pickerColumns(shown.length)}`}>
-        {shown.map((cat) => (
+      <div className={`grid gap-1.5 ${pickerColumns(primary.length)}`}>
+        {primary.map((cat) => (
           <ChoiceButton key={cat.id} selected={selectedId === cat.id} onClick={() => onChange(cat.id)} className="flex flex-col items-center py-2 min-w-0">
             <span className="text-lg leading-none mb-1">{cat.icon}</span>
             <span className="text-[10px] font-bold whitespace-nowrap">{cat.short ?? cat.label}</span>
           </ChoiceButton>
         ))}
       </div>
-      {!rest.some((c) => c.id === selectedId) && (
+      {showAll && (
+        <div className="mt-3 space-y-2.5">
+          {CATEGORY_GROUPS.map((group) => (
+            <div key={group.id}>
+              <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">{group.icon} {group.label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {CATEGORIES.filter((c) => c.group === group.id).map((cat) => (
+                  <ChoiceButton key={cat.id} selected={selectedId === cat.id} onClick={() => onChange(cat.id)} className="!rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap">
+                    {cat.icon} {cat.label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!selectedIsRest && (
         <button type="button" onClick={() => setExpanded(!showAll)} className="mt-2 w-full flex items-center justify-center gap-1 text-[11px] font-bold text-slate-400 hover:text-slate-600 py-1">
-          {showAll ? '主な分類だけにする' : `すべての分類を表示（あと${rest.length}つ）`}
+          {showAll ? 'よく使う分類だけにする' : `すべての分類を表示（${CATEGORIES.length}種類）`}
           <ChevronDown size={13} className={`transition-transform ${showAll ? 'rotate-180' : ''}`} />
         </button>
       )}
@@ -319,7 +335,8 @@ export function SettlementCard({ balance, isPaid, isReceived, isDemoMode, captio
 
 // ---------- カテゴリ別集計 ----------
 
-export function CategoryBreakdown({ title, items }: { title: string; items: (Category & { value: number })[] }) {
+// 大分類ごとの割合。大分類の下に、小分類の内訳を小さく出す
+export function CategoryBreakdown({ title, items }: { title: string; items: CategorySum[] }) {
   const total = items.reduce((sum, c) => sum + c.value, 0);
   if (total === 0) return null;
   // 帯グラフは、色のある分類はそれぞれ、色のない分類は灰色の「そのほか」1本にまとめる
@@ -343,11 +360,19 @@ export function CategoryBreakdown({ title, items }: { title: string; items: (Cat
       </div>
       <ul className="space-y-2">
         {items.map((cat) => (
-          <li key={cat.id} className="flex items-center gap-3 text-xs">
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color ?? FOLDED_COLOR }} />
-            <span className="flex-1 font-bold text-slate-500">{cat.icon} {cat.label}</span>
-            <span className="text-slate-400 tabular">{Math.round((cat.value / total) * 100)}%</span>
-            <span className="w-20 text-right font-bold text-slate-700 tabular">¥{cat.value.toLocaleString()}</span>
+          <li key={cat.id} className="text-xs">
+            <div className="flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.color ?? FOLDED_COLOR }} />
+              <span className="flex-1 font-bold text-slate-500">{cat.icon} {cat.label}</span>
+              <span className="text-slate-400 tabular">{Math.round((cat.value / total) * 100)}%</span>
+              <span className="w-20 text-right font-bold text-slate-700 tabular">¥{cat.value.toLocaleString()}</span>
+            </div>
+            {/* 小分類が大分類と同じ名前の1つだけなら、内訳は出さない */}
+            {(cat.subs.length > 1 || cat.subs[0]?.label !== cat.label) && (
+              <p className="ml-5 mt-0.5 text-[10px] text-slate-400 tabular">
+                {cat.subs.map((sub) => `${sub.label} ¥${sub.value.toLocaleString()}`).join(' ・ ')}
+              </p>
+            )}
           </li>
         ))}
       </ul>

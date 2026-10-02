@@ -4,11 +4,11 @@ import { supabase } from '../lib/supabase';
 import Modal from '../components/Modal';
 import ReceiptCapture from '../components/ReceiptCapture';
 import { PageShell, PageHeader, Card, SectionTitle, Field, CategoryPicker, MonthSwitcher, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../components/ui';
-import { Check, Loader2, Lock, Paperclip, Pencil, Trash2, Smartphone, Repeat, ChevronRight } from 'lucide-react';
+import { Check, Loader2, Lock, Paperclip, Pencil, Trash2, Smartphone, Repeat, ChevronRight, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { findCategory, normalizeCategory, sumByCategory } from '../lib/categories';
 import { normalizeImage, scanReceipt, uploadReceipt, removeReceipts } from '../lib/receipt';
-import { DEMO_PERSONAL_EXPENSES, DEMO_SUBSCRIPTIONS } from '../lib/demoData';
+import { DEMO_INCOMES, DEMO_PERSONAL_EXPENSES, DEMO_SUBSCRIPTIONS } from '../lib/demoData';
 import { Subscription, monthlyAmount, syncSubscriptions, daysUntil } from '../lib/subscriptions';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { toLocalYMD } from '../lib/date';
@@ -97,6 +97,24 @@ export default function PersonalPage() {
     });
     return () => { cancelled = true; };
   }, [myUserId, isDemoMode]);
+
+  // 自分の収入のこの月の合計（収入の画面への入口に出す）
+  const [monthIncome, setMonthIncome] = useState<number | null>(null);
+  useEffect(() => {
+    if (!myUserId || isDemoMode) return;
+    let cancelled = false;
+    const first = toLocalYMD(month);
+    const last = toLocalYMD(new Date(month.getFullYear(), month.getMonth() + 1, 0));
+    supabase.from('incomes').select('amount').eq('is_shared', false).eq('owner', myUserId).gte('received_date', first).lte('received_date', last).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) console.error(error);
+      setMonthIncome((data || []).reduce((sum, i) => sum + i.amount, 0));
+    });
+    return () => { cancelled = true; };
+  }, [myUserId, isDemoMode, month]);
+  const shownMonthIncome = isDemoMode
+    ? DEMO_INCOMES.filter((i) => !i.is_shared && i.owner === myUserId).reduce((sum, i) => sum + i.amount, 0)
+    : monthIncome;
 
   const shownSubscriptions = isDemoMode
     ? DEMO_SUBSCRIPTIONS.filter((s) => s.is_active).map((s) => { const d = new Date(); d.setDate(d.getDate() + s.daysFromToday); return { ...s, next_billing_date: toLocalYMD(d) }; })
@@ -275,6 +293,21 @@ export default function PersonalPage() {
                   <p className="font-black text-slate-800 tabular">¥{Math.round(subscriptionMonthly).toLocaleString()}<span className="text-[10px] text-slate-400">/月</span></p>
                   <p className="text-[10px] font-bold text-slate-400">{shownSubscriptions.length}件</p>
                 </div>
+              )}
+              <ChevronRight size={16} className="text-slate-300 shrink-0" />
+            </Card>
+          </Link>
+
+          {/* 自分の収入。押すと収入の画面へ */}
+          <Link href="/income?scope=personal" className="block -mt-3 mb-6 group">
+            <Card className="p-4 flex items-center gap-3 transition-all group-hover:-translate-y-0.5">
+              <span className="p-2.5 rounded-2xl bg-emerald-50 text-emerald-600 shrink-0"><Wallet size={18} /></span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-slate-800">収入</p>
+                <p className="text-[11px] font-bold text-slate-400 truncate">給料などを記録すると、分析で収支を見られます</p>
+              </div>
+              {!!shownMonthIncome && (
+                <p className="font-black text-emerald-600 tabular shrink-0">+¥{shownMonthIncome.toLocaleString()}</p>
               )}
               <ChevronRight size={16} className="text-slate-300 shrink-0" />
             </Card>
