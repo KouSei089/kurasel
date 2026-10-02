@@ -3,12 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { PageShell, PageHeader, Card, MonthSwitcher, ChoiceButton, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../components/ui';
 import { CATEGORY_GROUPS, findCategory, findGroup, groupOf, sumByCategory } from '../lib/categories';
-import { Entry, Period, SOURCE_LABEL, Source, loadEntries, loadIncomes, myShare, periodRange, trendMonths } from '../lib/analytics';
+import { Entry, Period, SOURCE_LABEL, Source, demoEntries, loadEntries, loadIncomes, myShare, periodRange, trendMonths } from '../lib/analytics';
 import type { Income } from '../lib/income';
 import { BalanceView } from './BalanceView';
 import { IncomeView } from './IncomeView';
 import { CHART_COLORS, MonthChart } from './MonthChart';
-import { DEMO_EXPENSES, DEMO_INCOMES, DEMO_PERSONAL_EXPENSES, DEMO_TRIPS, DEMO_TRIP_EXPENSES } from '../lib/demoData';
+import { DEMO_INCOMES } from '../lib/demoData';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { todayYMD } from '../lib/date';
 
@@ -28,11 +28,6 @@ const SOURCES: Source[] = ['shared', 'trip', 'personal'];
 // ふたり・旅行・個人の色は、各画面の色（ネイビー・スカイ・バイオレット）と同じ
 const SOURCE_DOT: Record<Source, string> = { shared: 'bg-slate-700', trip: 'bg-sky-500', personal: 'bg-violet-500' };
 
-const demoEntries = (): Entry[] => [
-  ...DEMO_EXPENSES.map((e) => ({ key: `shared-${e.id}`, source: 'shared' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded })),
-  ...DEMO_TRIP_EXPENSES.map((e) => ({ key: `trip-${e.id}`, source: 'trip' as const, store_name: e.store_name, amount: e.amount, date: e.paid_date ?? e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded, trip_name: DEMO_TRIPS.find((t) => t.id === e.trip_id)?.name })),
-  ...DEMO_PERSONAL_EXPENSES.map((e) => ({ key: `personal-${e.id}`, source: 'personal' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: null, is_excluded: false })),
-];
 
 const yen = (n: number) => `¥${Math.round(n).toLocaleString()}`;
 const formatYMD = (ymd: string) => ymd.replaceAll('-', '/');
