@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { supabase } from './lib/supabase';
-import { Check, Loader2, Smartphone, ChevronRight, Users, UserPlus, Wallet } from 'lucide-react';
+import { Check, Loader2, Smartphone, ChevronRight, Users, UserPlus, Wallet, CalendarCheck } from 'lucide-react';
 import Link from 'next/link';
 import Modal from './components/Modal';
 import ExcludedToggle from './components/ExcludedToggle';
@@ -161,6 +161,20 @@ export default function Home() {
           </Link>
         }
       />
+
+      {/* 月のはじめ（1〜7日）は、先月の振り返りへの入口を出す */}
+      {new Date().getDate() <= 7 && (
+        <Link href="/review" className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-100 hover:bg-amber-100/70 transition-colors">
+          <span className="flex items-center gap-3">
+            <span className="p-2 rounded-full bg-white text-amber-500"><CalendarCheck size={16} /></span>
+            <span>
+              <span className="block text-sm font-bold text-slate-700">{new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getMonth() + 1}月の振り返りができました</span>
+              <span className="block text-[10px] text-slate-500">収支・予算・増えた分類をふたりで見てみましょう</span>
+            </span>
+          </span>
+          <ChevronRight size={16} className="text-amber-300 shrink-0" />
+        </Link>
+      )}
 
       {/* 相手がまだ参加していなければ招待を促す */}
       {!isDemoMode && !partner && (

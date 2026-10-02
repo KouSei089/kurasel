@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { ArrowDownRight, ArrowUpRight, Plus } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, CalendarCheck, ChevronRight, Plus } from 'lucide-react';
 import { Card } from '../components/ui';
 import { groupOf } from '../lib/categories';
 import { Entry, myShare } from '../lib/analytics';
@@ -94,7 +94,12 @@ export function BalanceView({ entries, incomes, from, to, months, focusMonth, on
           </Link>
         )}
       </Card>
-      <p className="text-[10px] text-slate-400 mb-6 ml-1 leading-relaxed">ふたりの収入・支出は半分、おごりは払った人、個人は全額で計算しています</p>
+      <p className="text-[10px] text-slate-400 mb-4 ml-1 leading-relaxed">ふたりの収入・支出は半分、おごりは払った人、個人は全額で計算しています</p>
+
+      <Link href={isMonthMode ? `/review?month=${months[months.length - 1]}` : '/review'} className="mb-6 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-white/70 border border-white shadow-sm hover:bg-white transition-colors">
+        <span className="flex items-center gap-2 text-sm font-bold text-slate-700"><CalendarCheck size={16} className="text-amber-500" />{isMonthMode ? `${Number(months[months.length - 1].slice(5))}月の振り返りを見る` : '月の振り返りを見る'}</span>
+        <ChevronRight size={16} className="text-slate-300 shrink-0" />
+      </Link>
 
       {/* 収入の使いみち */}
       {segments.length > 0 && (

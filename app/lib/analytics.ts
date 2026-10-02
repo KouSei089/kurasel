@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { toLocalYMD } from './date';
 import type { Income } from './income';
+import { DEMO_EXPENSES, DEMO_PERSONAL_EXPENSES, DEMO_TRIPS, DEMO_TRIP_EXPENSES } from './demoData';
 
 // 分析画面用に、ふたり・旅行・個人の支出を1つの形にそろえて扱う
 
@@ -95,3 +96,10 @@ export const loadIncomes = async (from: string, to: string, me: string): Promise
   if (error) console.error(error);
   return data ?? [];
 };
+
+// デモモードの見本を、分析と同じ形にそろえる
+export const demoEntries = (): Entry[] => [
+  ...DEMO_EXPENSES.map((e) => ({ key: `shared-${e.id}`, source: 'shared' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded })),
+  ...DEMO_TRIP_EXPENSES.map((e) => ({ key: `trip-${e.id}`, source: 'trip' as const, store_name: e.store_name, amount: e.amount, date: e.paid_date ?? e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded, trip_name: DEMO_TRIPS.find((t) => t.id === e.trip_id)?.name })),
+  ...DEMO_PERSONAL_EXPENSES.map((e) => ({ key: `personal-${e.id}`, source: 'personal' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: null, is_excluded: false })),
+];
