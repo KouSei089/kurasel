@@ -140,3 +140,12 @@ export const DEMO_INCOMES = [
   { id: 4404, owner: 'あなた', is_shared: false, source: '株式会社サンプル', amount: 280000, received_date: '2024-11-25', category: 'salary', created_at: '2024-11-25T09:00:00' },
   { id: 4405, owner: 'パートナー', is_shared: true, source: '結婚祝い', amount: 50000, received_date: '2024-08-03', category: 'gift', created_at: '2024-08-03T09:00:00' },
 ];
+
+// 月の予算（ふたりの予算と「あなた」の予算）
+export const DEMO_BUDGETS = [
+  { id: 3301, owner: 'あなた', is_shared: true, category_group: 'total', amount: 20000 },
+  { id: 3302, owner: 'あなた', is_shared: true, category_group: 'food', amount: 8000 },
+  { id: 3303, owner: 'あなた', is_shared: true, category_group: 'daily', amount: 3000 },
+  { id: 3304, owner: 'あなた', is_shared: false, category_group: 'total', amount: 90000 },
+  { id: 3305, owner: 'あなた', is_shared: false, category_group: 'fashion', amount: 8000 },
+];
