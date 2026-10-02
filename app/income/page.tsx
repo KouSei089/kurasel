@@ -4,7 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 import Modal from '../components/Modal';
 import { PageShell, PageHeader, Card, SectionTitle, Field, ChoiceButton, MonthSwitcher, EmptyState, Loading, buttonClass, inputClass } from '../components/ui';
-import { Check, Loader2, Lock, Pencil, Trash2, Users } from 'lucide-react';
+import { Check, ChevronRight, FileText, Loader2, Lock, Pencil, Trash2, Users } from 'lucide-react';
+import Link from 'next/link';
 import { INCOME_CATEGORIES, findIncomeCategory, type Income, type IncomeScope } from '../lib/income';
 import { DEMO_INCOMES } from '../lib/demoData';
 import { useCurrentUser } from '../lib/useCurrentUser';
@@ -35,7 +36,13 @@ function IncomePage() {
   const { isDemoMode, myUserId, myUserName, nameOf } = useCurrentUser();
   const formRef = useRef<HTMLDivElement>(null);
 
-  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  // ?month=YYYY-MM で開くとその月から（給与明細を取り込んだあとなど）
+  const [month, setMonth] = useState(() => {
+    const m = searchParams.get('month')?.match(/^(\d{4})-(\d{2})$/);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, 1);
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [loadedKey, setLoadedKey] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -125,12 +132,15 @@ function IncomePage() {
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handleDeleteClick = (item: Income) => {
+  const handleDeleteClick = async (item: Income) => {
     if (checkDemo()) return;
+    // 給与明細から取り込んだ収入は、天引きの控除（個人の支出）も一緒に消える
+    const { count } = await supabase.from('personal_expenses').select('id', { count: 'exact', head: true }).eq('income_id', item.id);
     setModal({
       isOpen: true,
       title: '収入の削除',
-      message: `「${item.source || findIncomeCategory(item.category).label}」（${item.amount.toLocaleString()}円）を削除してもよろしいですか？`,
+      message: `「${item.source || findIncomeCategory(item.category).label}」（${item.amount.toLocaleString()}円）を削除してもよろしいですか？`
+        + (count ? `\n給与明細から記録した控除 ${count}件（個人の支出）も一緒に削除されます。` : ''),
       onConfirm: async () => {
         closeModal();
         const { error } = await supabase.from('incomes').delete().eq('id', item.id);
@@ -179,6 +189,20 @@ function IncomePage() {
             </p>
             <p className="relative text-[11px] font-bold text-white/75 mt-2">{shown.length}件の記録 ・ 精算には含まれません</p>
           </div>
+
+          {/* 給与明細のスクショから、総支給と控除をまとめて記録する */}
+          {isPersonal && (
+            <Link href="/income/payslip" className="-mt-2 mb-6 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-white/70 border border-white shadow-sm hover:bg-white transition-colors">
+              <span className="flex items-center gap-3">
+                <span className="p-2 rounded-full bg-emerald-50 text-emerald-600"><FileText size={16} /></span>
+                <span>
+                  <span className="block text-sm font-bold text-slate-700">給与明細のスクショから取り込む</span>
+                  <span className="block text-[10px] text-slate-400">総支給を収入に、税金・社会保険料を支出に記録</span>
+                </span>
+              </span>
+              <ChevronRight size={16} className="text-slate-300 shrink-0" />
+            </Link>
+          )}
 
           {/* 入力フォーム */}
           <div ref={formRef} className="scroll-mt-4 mb-8">

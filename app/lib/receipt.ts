@@ -105,3 +105,34 @@ export const removeReceipts = async (urls: (string | null)[]) => {
   const { error } = await supabase.storage.from('receipts').remove(paths);
   if (error) console.error(error);
 };
+
+// 給与明細・賞与明細のスクリーンショットから読み取った内容（/api/analyze-payslip）
+export type PayslipDeductionType = 'social_insurance' | 'tax' | 'other';
+export type Payslip = {
+  kind: 'salary' | 'bonus';
+  pay_date: string | null; // YYYY-MM-DD。読めなければ null
+  employer: string;
+  gross: number; // 総支給額
+  net: number; // 差引支給額（手取り）
+  deductions: { name: string; amount: number; type: PayslipDeductionType }[];
+};
+
+// 明細は細かい数字が多いので、履歴のスクショと同じく文字が読める大きさのまま軽くして送る
+export const scanPayslip = async (file: File): Promise<Payslip> => {
+  const compressed = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 2400, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.85 });
+  const base64Data = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+    reader.readAsDataURL(compressed);
+  });
+
+  const res = await fetch('/api/analyze-payslip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ imageBase64: base64Data, mimeType: 'image/jpeg' }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '読み取りに失敗しました');
+  return data;
+};
