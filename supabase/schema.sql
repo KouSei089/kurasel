@@ -341,6 +341,8 @@ drop policy if exists "anon full access" on public.trips;
 drop policy if exists "anon full access" on public.trip_expenses;
 drop policy if exists "anon full access" on public.personal_expenses;
 drop policy if exists "anon full access" on public.subscriptions;
+-- ダッシュボードで手作業で作られていた「誰でも読み書きできる」ポリシー（本番に残っていた）
+drop policy if exists "Allow public access for now" on public.expenses;
 
 drop policy if exists "members read" on public.households;
 create policy "members read" on public.households
@@ -415,6 +417,20 @@ on conflict (id) do update set public = true;
 drop policy if exists "receipts anon read" on storage.objects;
 drop policy if exists "receipts anon upload" on storage.objects;
 drop policy if exists "receipts anon delete" on storage.objects;
+-- ダッシュボードで手作業で作られていた「誰でも何でもできる」ポリシー（"Allow All" と "Allow All xxxx_0" など）
+do $$
+declare
+  r record;
+begin
+  for r in
+    select policyname from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and (policyname = 'Allow All' or policyname like 'Allow All %')
+  loop
+    execute format('drop policy %I on storage.objects', r.policyname);
+  end loop;
+end;
+$$;
 
 drop policy if exists "receipts household upload" on storage.objects;
 create policy "receipts household upload" on storage.objects
