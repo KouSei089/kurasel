@@ -39,7 +39,7 @@ export const daysUntil = (ymd: string, today = todayYMD()) =>
 export const subscriptionRecordName = (name: string) => `${name}（サブスク）`;
 
 // 支払日を過ぎた利用中のサブスクを、個人の支出に記録して次の支払日へ進める。記録した件数を返す
-export const syncSubscriptions = async (owner: string) => {
+export const syncSubscriptions = async (owner: string) => { // owner は自分のID
   const today = todayYMD();
   const { data: due, error } = await supabase
     .from('subscriptions')

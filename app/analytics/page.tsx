@@ -25,7 +25,7 @@ const yen = (n: number) => `¥${Math.round(n).toLocaleString()}`;
 const formatYMD = (ymd: string) => ymd.replaceAll('-', '/');
 
 export default function AnalyticsPage() {
-  const { isDemoMode, myUserName } = useCurrentUser();
+  const { isDemoMode, myUserId, myUserName, nameOf } = useCurrentUser();
 
   // デモの見本は2024年のデータなので、デモでは2024年を最初に出す
   const [period, setPeriod] = useState<Period>(() => {
@@ -52,15 +52,15 @@ export default function AnalyticsPage() {
   const fetchKey = `${fetchFrom}_${to}`;
 
   useEffect(() => {
-    if (!myUserName || isDemoMode) return;
+    if (!myUserId || isDemoMode) return;
     let cancelled = false;
-    loadEntries(fetchFrom, to, myUserName).then((data) => {
+    loadEntries(fetchFrom, to, myUserId).then((data) => {
       if (cancelled) return;
       setEntries(data);
       setLoadedKey(fetchKey);
     });
     return () => { cancelled = true; };
-  }, [myUserName, isDemoMode, fetchFrom, to, fetchKey]);
+  }, [myUserId, isDemoMode, fetchFrom, to, fetchKey]);
 
   const all = isDemoMode ? demoEntries() : entries;
   const isLoading = !isDemoMode && loadedKey !== fetchKey;
@@ -71,11 +71,11 @@ export default function AnalyticsPage() {
     return (e: Entry) =>
       sources.includes(e.source) &&
       (categories.length === 0 || categories.includes(normalizeCategory(e.category))) &&
-      (payer === 'all' || (payer === 'me' ? e.source === 'personal' || e.paid_by === myUserName : e.source !== 'personal' && e.paid_by !== myUserName)) &&
+      (payer === 'all' || (payer === 'me' ? e.source === 'personal' || e.paid_by === myUserId : e.source !== 'personal' && e.paid_by !== myUserId)) &&
       (!kw || e.store_name?.toLowerCase().includes(kw) || e.trip_name?.toLowerCase().includes(kw));
-  }, [sources, categories, payer, keyword, myUserName]);
+  }, [sources, categories, payer, keyword, myUserId]);
 
-  const value = (e: Entry) => (amountMode === 'total' ? e.amount : myShare(e, myUserName));
+  const value = (e: Entry) => (amountMode === 'total' ? e.amount : myShare(e, myUserId));
 
   const filtered = all.filter(matchesFilters);
   const inPeriod = filtered.filter((e) => e.date >= from && e.date <= to).sort((a, b) => b.date.localeCompare(a.date));
@@ -242,7 +242,7 @@ export default function AnalyticsPage() {
                           <p className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 min-w-0">
                             <span className="tabular shrink-0">{formatYMD(e.date)}</span>
                             <span className="flex items-center gap-1 truncate"><span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SOURCE_DOT[e.source]}`} />{e.source === 'trip' && e.trip_name ? e.trip_name : SOURCE_LABEL[e.source]}</span>
-                            {e.paid_by && <span className="truncate">・{e.paid_by}</span>}
+                            {e.paid_by && <span className="truncate">・{nameOf(e.paid_by)}</span>}
                             {e.is_excluded && <span className="text-amber-600 shrink-0">・おごり</span>}
                           </p>
                         </div>

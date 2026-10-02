@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
+import { isSignedIn } from "../../lib/serverAuth";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
@@ -7,6 +8,10 @@ export async function POST(req: Request) {
   try {
     if (!process.env.GOOGLE_API_KEY) {
       throw new Error("GOOGLE_API_KEY is not defined");
+    }
+
+    if (!(await isSignedIn(req))) {
+      return NextResponse.json({ error: "ログインが必要です" }, { status: 401 });
     }
 
     const body = await req.json();

@@ -19,6 +19,13 @@ export const normalizeImage = async (file: File): Promise<File> => {
   return new File([blob], file.name.replace(/\.heic$/i, '.jpg'), { type: 'image/jpeg' });
 };
 
+// AI のAPIは、ログインした人だけが使える（Gemini の無料枠を他人に使われないように）
+const authHeaders = async (): Promise<Record<string, string>> => {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 export const scanReceipt = async (file: File): Promise<ScanResult> => {
   const base64Data = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -32,7 +39,7 @@ export const scanReceipt = async (file: File): Promise<ScanResult> => {
   // Geminiのキーはサーバー側にしか置かないので、APIルート経由で呼ぶ
   const res = await fetch('/api/analyze-receipt', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ imageBase64: base64Data, mimeType: file.type }),
   });
 
@@ -62,7 +69,7 @@ export const scanHistory = async (file: File, today: string): Promise<HistoryIte
 
   const res = await fetch('/api/analyze-history', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ imageBase64: base64Data, mimeType: 'image/jpeg', today }),
   });
 
@@ -71,13 +78,15 @@ export const scanHistory = async (file: File, today: string): Promise<HistoryIte
   return data.items ?? [];
 };
 
-export const uploadReceipt = async (file: File) => {
+// 画像は「世帯のID/ファイル名」に置く（同じ世帯のメンバーだけが追加・削除できる）。
+// 表示は公開URLで行うので、ファイル名は推測できないようにする
+export const uploadReceipt = async (file: File, householdId: string) => {
   try {
     const options = { maxSizeMB: 0.1, maxWidthOrHeight: 1024, useWebWorker: true, fileType: 'image/jpeg', initialQuality: 0.6 };
     const compressedFile = await imageCompression(file, options);
     const fileExt = 'jpg';
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `${fileName}`;
+    const fileName = `${Date.now()}-${crypto.randomUUID()}.${fileExt}`;
+    const filePath = `${householdId}/${fileName}`;
     const { error: uploadError } = await supabase.storage.from('receipts').upload(filePath, compressedFile, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
     if (uploadError) throw uploadError;
     const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(filePath);
@@ -88,7 +97,11 @@ export const uploadReceipt = async (file: File) => {
   }
 };
 
+// 公開URL（…/object/public/receipts/世帯のID/ファイル名）からバケット内のパスを取り出して消す。
+// Google ログイン以前の画像はフォルダなしで置かれていて、権限がないので消えない（記録の削除は続ける）
 export const removeReceipts = async (urls: (string | null)[]) => {
-  const fileNames = urls.map((url) => url?.split('/').pop()).filter((name): name is string => !!name);
-  if (fileNames.length > 0) await supabase.storage.from('receipts').remove(fileNames);
+  const paths = urls.map((url) => url?.split('/receipts/')[1]).filter((path): path is string => !!path);
+  if (paths.length === 0) return;
+  const { error } = await supabase.storage.from('receipts').remove(paths);
+  if (error) console.error(error);
 };

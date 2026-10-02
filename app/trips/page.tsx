@@ -21,7 +21,7 @@ const DEMO_SUMMARIES: TripSummary[] = DEMO_TRIPS.map((trip) => {
 export default function TripsPage() {
   const router = useRouter();
 
-  const { isDemoMode, myUserName } = useCurrentUser();
+  const { isDemoMode, myUserId, myUserName } = useCurrentUser();
   const [trips, setTrips] = useState<TripSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +33,7 @@ export default function TripsPage() {
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
-    if (!myUserName || isDemoMode) return;
+    if (!myUserId || isDemoMode) return;
     let cancelled = false;
     // 一覧では合計だけ出したいので、金額だけ一緒に取ってくる
     supabase
@@ -55,7 +55,7 @@ export default function TripsPage() {
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [myUserName, isDemoMode]);
+  }, [myUserId, isDemoMode]);
 
   const shownTrips = isDemoMode ? DEMO_SUMMARIES : trips;
   const isLoading = !isDemoMode && loading;

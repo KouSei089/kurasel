@@ -1,8 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from './lib/supabase';
-import { Check, Loader2, LogOut, Smartphone, ChevronRight } from 'lucide-react';
+import { Check, Loader2, Smartphone, ChevronRight, Users, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import Modal from './components/Modal';
 import ExcludedToggle from './components/ExcludedToggle';
@@ -14,8 +13,7 @@ import { useCurrentUser } from './lib/useCurrentUser';
 import { todayYMD } from './lib/date';
 
 export default function Home() {
-  const router = useRouter();
-  const { isDemoMode, myUserName } = useCurrentUser();
+  const { isDemoMode, myUserId, myUserName, householdId, partner } = useCurrentUser();
 
   const [isScanning, setIsScanning] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -37,24 +35,6 @@ export default function Home() {
     onConfirm: () => {},
   });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
-
-  const handleLogoutClick = () => {
-    setModalConfig({
-      isOpen: true,
-      type: 'confirm',
-      title: 'ログアウト',
-      message: '本当にログアウトしますか？',
-      confirmText: 'ログアウト',
-      onConfirm: executeLogout,
-    });
-  };
-
-  const executeLogout = () => {
-    closeModal();
-    localStorage.removeItem('scan_io_user_name');
-    localStorage.removeItem('kurasel_mode'); // モード設定も削除
-    router.push('/login');
-  };
 
   const clearImage = () => {
     setPreviewUrl(null);
@@ -124,13 +104,13 @@ export default function Home() {
       }
 
       // --- 本番用の保存処理 ---
-      const uploadedUrl = fileToUpload ? await uploadReceipt(fileToUpload) : null;
+      const uploadedUrl = fileToUpload ? await uploadReceipt(fileToUpload, householdId) : null;
 
       const { error } = await supabase.from('expenses').insert({
         store_name: storeName,
         amount: Number(amount),
         purchase_date: purchaseDate,
-        paid_by: myUserName,
+        paid_by: myUserId,
         category: category,
         receipt_url: uploadedUrl,
         is_excluded: isExcluded,
@@ -176,11 +156,25 @@ export default function Home() {
         subtitle={`${myUserName} として記録します`}
         isDemoMode={isDemoMode}
         actions={
-          <button onClick={handleLogoutClick} className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-rose-500 px-2 py-1.5 rounded-full hover:bg-white transition-colors">
-            <LogOut size={13} /> ログアウト
-          </button>
+          <Link href="/household" className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-slate-700 px-2 py-1.5 rounded-full hover:bg-white transition-colors">
+            <Users size={13} /> ふたりの家計
+          </Link>
         }
       />
+
+      {/* 相手がまだ参加していなければ招待を促す */}
+      {!isDemoMode && !partner && (
+        <Link href="/household" className="mb-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-rose-50 border border-rose-100 hover:bg-rose-100/70 transition-colors">
+          <span className="flex items-center gap-3">
+            <span className="p-2 rounded-full bg-white text-rose-500"><UserPlus size={16} /></span>
+            <span>
+              <span className="block text-sm font-bold text-slate-700">パートナーを招待する</span>
+              <span className="block text-[10px] text-slate-500">招待リンクを送ると、ふたりで記録・精算できます</span>
+            </span>
+          </span>
+          <ChevronRight size={16} className="text-rose-300 shrink-0" />
+        </Link>
+      )}
 
       <Card className="p-5">
         <ReceiptCapture previewUrl={previewUrl} isScanning={isScanning} onFile={handleFile} onClear={clearImage} />

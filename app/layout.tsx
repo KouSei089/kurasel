@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { M_PLUS_Rounded_1c } from "next/font/google";
 import "./globals.css";
+import { SessionProvider } from "./lib/session";
 
 const mPlusRounded1c = M_PLUS_Rounded_1c({
   subsets: ["latin"],
@@ -42,7 +43,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className={mPlusRounded1c.className}>{children}</body>
+      <body className={mPlusRounded1c.className}>
+        <SessionProvider>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

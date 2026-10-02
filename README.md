@@ -63,8 +63,28 @@
 ## 📂 データベース設定 (Supabase SQL)
 
 `supabase/schema.sql` の中身をSupabaseのSQL Editorに貼り付けて実行してください。
-`users` / `expenses` / `monthly_settlements` の3テーブルと、レシート画像用の `receipts` バケット、
-およびアクセスポリシーがまとめて作成されます。何度実行しても問題ありません。
+テーブル・世帯（ふたりの家計）の仕組み・レシート画像用の `receipts` バケット・アクセスポリシーがまとめて作成されます。何度実行しても問題ありません。
+
+アクセスはログインした人だけに絞っています。ふたりの記録は同じ世帯のメンバーだけ、個人の記録は本人だけが読み書きできます。
+
+## 🔐 ログイン（Google）の設定
+
+ログインは Supabase Auth の Google ログインです。
+
+1. **Google Cloud Console** で OAuth クライアント（種類: ウェブ アプリケーション）を作る
+    * 承認済みのリダイレクト URI: `https://<SupabaseのプロジェクトID>.supabase.co/auth/v1/callback`
+2. **Supabase** の Authentication → Sign In / Providers → Google を有効にし、1のクライアントIDとシークレットを入れる
+3. **Supabase** の Authentication → URL Configuration
+    * Site URL: 本番のURL（例: `https://kurasel.vercel.app`）
+    * Redirect URLs: `https://<本番のドメイン>/**` と `http://localhost:3000/**`
+
+ふたりをペアにするのは「世帯」です。最初の人がログインして家計を作り、「ふたりの家計」画面の招待リンク（24時間有効・1回限り）を相手に送ります。相手はリンクから Google でログインすると同じ家計に入ります。
+
+### 以前（合言葉ログイン）のデータを引き継ぐ
+
+1. `supabase/schema.sql` を実行し、新しいアプリを公開する（この時点で古いアプリは使えなくなります）
+2. ふたりとも新しいアプリで一度 Google ログインする
+3. `supabase/migrate_legacy.sql` の先頭にある、ふたりのメールアドレスと以前の名前を書き換えて実行する
 
 ## ⏰ プロジェクトの一時停止対策
 

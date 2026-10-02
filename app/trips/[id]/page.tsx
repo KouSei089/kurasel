@@ -39,8 +39,7 @@ export default function TripDetailPage() {
 
   const formRef = useRef<HTMLDivElement>(null);
 
-  const { isDemoMode, myUserName } = useCurrentUser();
-  const [partnerName, setPartnerName] = useState('');
+  const { isDemoMode, myUserId, myUserName, householdId, members, nameOf } = useCurrentUser();
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [expenses, setExpenses] = useState<TripExpense[]>([]);
@@ -53,8 +52,8 @@ export default function TripDetailPage() {
   const [amount, setAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(todayYMD());
   const [category, setCategory] = useState('eatout');
-  const [paidBy, setPaidBy] = useState('');
-  const currentPaidBy = paidBy || myUserName;
+  const [paidBy, setPaidBy] = useState(''); // 払った人のID。空なら自分
+  const currentPaidBy = paidBy || myUserId;
   const [isExcluded, setIsExcluded] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
@@ -74,20 +73,6 @@ export default function TripDetailPage() {
     onConfirm: (() => {}) as (value?: string) => void,
   });
   const closeModal = () => setModalConfig((prev) => ({ ...prev, isOpen: false }));
-
-  // 「相手が払った」も選べるように、もう1人の名前を取っておく
-  useEffect(() => {
-    if (!myUserName) return;
-    let cancelled = false;
-    if (isDemoMode) {
-      Promise.resolve().then(() => { if (!cancelled) setPartnerName('パートナー'); });
-      return () => { cancelled = true; };
-    }
-    supabase.from('users').select('name').neq('name', myUserName).order('id').limit(1).then(({ data }) => {
-      if (!cancelled && data?.[0]) setPartnerName(data[0].name);
-    });
-    return () => { cancelled = true; };
-  }, [myUserName, isDemoMode]);
 
   const fetchTrip = useCallback(async () => {
     if (isDemoMode) {
@@ -123,8 +108,8 @@ export default function TripDetailPage() {
   }, [tripId, isDemoMode]);
 
   useEffect(() => {
-    if (myUserName) fetchTrip();
-  }, [myUserName, fetchTrip]);
+    if (myUserId) fetchTrip();
+  }, [myUserId, fetchTrip]);
 
   const checkDemo = () => {
     if (isDemoMode) {
@@ -202,14 +187,14 @@ export default function TripDetailPage() {
       if (editingId) {
         const update: typeof values & { receipt_url?: string | null } = { ...values };
         if (fileToUpload) {
-          update.receipt_url = await uploadReceipt(fileToUpload);
+          update.receipt_url = await uploadReceipt(fileToUpload, householdId);
           const old = expenses.find((e) => e.id === editingId)?.receipt_url;
           if (update.receipt_url && old) await removeReceipts([old]);
         }
         const { error } = await supabase.from('trip_expenses').update(update).eq('id', editingId);
         if (error) throw error;
       } else {
-        const receiptUrl = fileToUpload ? await uploadReceipt(fileToUpload) : null;
+        const receiptUrl = fileToUpload ? await uploadReceipt(fileToUpload, householdId) : null;
         const { error } = await supabase.from('trip_expenses').insert({ ...values, trip_id: tripId, receipt_url: receiptUrl });
         if (error) throw error;
       }
@@ -380,8 +365,8 @@ export default function TripDetailPage() {
   const excluded = expenses.filter((e) => e.is_excluded);
   const unsettled = included.filter((e) => !e.is_settled);
   const settled = included.filter((e) => e.is_settled);
-  const totalMe = unsettled.filter((e) => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
-  const totalPartner = unsettled.filter((e) => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
+  const totalMe = unsettled.filter((e) => e.paid_by === myUserId).reduce((sum, e) => sum + e.amount, 0);
+  const totalPartner = unsettled.filter((e) => e.paid_by !== myUserId).reduce((sum, e) => sum + e.amount, 0);
   const totalAmount = totalMe + totalPartner;
   const excludedAmount = excluded.reduce((sum, e) => sum + e.amount, 0);
   const settledAmount = settled.reduce((sum, e) => sum + e.amount, 0);
@@ -471,9 +456,9 @@ export default function TripDetailPage() {
                 </Field>
                 <Field label="支払った人">
                   <div className="grid grid-cols-2 gap-2">
-                    {[myUserName, partnerName].filter(Boolean).map((name) => (
-                      <ChoiceButton key={name} selected={currentPaidBy === name} onClick={() => setPaidBy(name)} className="py-2.5 text-sm font-bold truncate px-2">
-                        {name}{name === myUserName && '（自分）'}
+                    {members.map((m) => (
+                      <ChoiceButton key={m.id} selected={currentPaidBy === m.id} onClick={() => setPaidBy(m.id)} className="py-2.5 text-sm font-bold truncate px-2">
+                        {m.name}{m.id === myUserId && '（自分）'}
                       </ChoiceButton>
                     ))}
                   </div>
@@ -499,7 +484,7 @@ export default function TripDetailPage() {
           ) : (
             <ul className="space-y-3">
               {expenses.map((item) => {
-                const isMe = item.paid_by === myUserName;
+                const isMe = item.paid_by === myUserId;
                 const cat = findCategory(item.category);
                 return (
                   <li key={item.id}>
@@ -519,7 +504,7 @@ export default function TripDetailPage() {
                         </div>
                         <div className="text-right shrink-0">
                           <p className={`font-black text-lg tabular ${item.is_excluded ? 'text-slate-400 line-through decoration-slate-300' : item.is_settled ? 'text-slate-400' : 'text-slate-800'}`}>¥{item.amount.toLocaleString()}</p>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-500'}`}>{item.paid_by}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-500'}`}>{nameOf(item.paid_by)}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-slate-100">

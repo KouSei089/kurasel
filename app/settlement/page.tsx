@@ -11,10 +11,11 @@ import { DEMO_EXPENSES, DEMO_STATUS } from '../lib/demoData';
 import { findCategory, sumByCategory } from '../lib/categories';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { toLocalYMD } from '../lib/date';
+import { removeReceipts } from '../lib/receipt';
 
 type Comment = {
   id: string;
-  user: string;
+  user: string; // 書いた人のID（以前のデータは名前）
   text: string;
   timestamp: string;
 };
@@ -25,9 +26,9 @@ type Expense = {
   amount: number;
   purchase_date: string;
   created_at: string;
-  paid_by: string;
+  paid_by: string; // 払った人のID（以前のデータは名前）
   category: string | null;
-  reactions: { [key: string]: string } | null;
+  reactions: { [userId: string]: string } | null;
   comments: Comment[] | null;
   receipt_url: string | null;
   is_excluded: boolean; // おごり等で割り勘の対象外
@@ -58,7 +59,7 @@ const formatPurchaseDate = (ymd: string) => {
 };
 
 export default function SettlementPage() {
-  const { isDemoMode, myUserName } = useCurrentUser();
+  const { isDemoMode, myUserId, myUserName, householdId, nameOf } = useCurrentUser();
 
   // 状態管理
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -142,8 +143,8 @@ export default function SettlementPage() {
   }, [currentMonth, isDemoMode]);
 
   useEffect(() => {
-    if (myUserName) fetchExpenses();
-  }, [myUserName, fetchExpenses]);
+    if (myUserId) fetchExpenses();
+  }, [myUserId, fetchExpenses]);
 
   // デモモード操作ガード
   const checkDemo = () => {
@@ -188,7 +189,10 @@ export default function SettlementPage() {
     if (type === 'received') newStatus.is_received = !newStatus.is_received;
 
     setMonthlyStatus(newStatus);
-    const { error } = await supabase.from('monthly_settlements').upsert({ month: monthKey, is_paid: newStatus.is_paid, is_received: newStatus.is_received, updated_at: new Date().toISOString() });
+    const { error } = await supabase.from('monthly_settlements').upsert(
+      { household_id: householdId, month: monthKey, is_paid: newStatus.is_paid, is_received: newStatus.is_received, updated_at: new Date().toISOString() },
+      { onConflict: 'household_id,month' },
+    );
     if (error) { console.error(error); setMonthlyStatus(monthlyStatus); alert('更新失敗'); }
   };
 
@@ -209,10 +213,7 @@ export default function SettlementPage() {
     try {
       const { data: targetItem, error: fetchError } = await supabase.from('expenses').select('receipt_url').eq('id', id).single();
       if (fetchError) throw fetchError;
-      if (targetItem?.receipt_url) {
-        const fileName = targetItem.receipt_url.split('/').pop();
-        if (fileName) await supabase.storage.from('receipts').remove([fileName]);
-      }
+      await removeReceipts([targetItem?.receipt_url]);
       const { error: deleteError } = await supabase.from('expenses').delete().eq('id', id);
       if (deleteError) throw deleteError;
       setExpenses(expenses.filter(e => e.id !== id));
@@ -231,9 +232,9 @@ export default function SettlementPage() {
   const handleReaction = async (item: Expense, reactionId: string) => {
     if (checkDemo()) return;
     const currentReactions = item.reactions || {};
-    const myCurrentReactionId = currentReactions[myUserName];
+    const myCurrentReactionId = currentReactions[myUserId];
     const newReactions = { ...currentReactions };
-    if (myCurrentReactionId === reactionId) delete newReactions[myUserName]; else newReactions[myUserName] = reactionId;
+    if (myCurrentReactionId === reactionId) delete newReactions[myUserId]; else newReactions[myUserId] = reactionId;
     setActivePickerId(null);
     const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, reactions: newReactions } : e);
     setExpenses(updatedExpenses);
@@ -243,7 +244,7 @@ export default function SettlementPage() {
   const handleCommentSubmit = async (item: Expense) => {
     if (checkDemo()) return;
     if (!commentText.trim()) return;
-    const newComment: Comment = { id: generateId(), user: myUserName, text: commentText.trim(), timestamp: new Date().toISOString(), };
+    const newComment: Comment = { id: generateId(), user: myUserId, text: commentText.trim(), timestamp: new Date().toISOString(), };
     const currentComments = item.comments || [];
     const newComments = [...currentComments, newComment];
     const updatedExpenses = expenses.map(e => e.id === item.id ? { ...e, comments: newComments } : e);
@@ -326,14 +327,14 @@ export default function SettlementPage() {
   const settled = included.filter(e => e.is_settled);
   const excludedAmount = excluded.reduce((sum, e) => sum + e.amount, 0);
   const settledAmount = settled.reduce((sum, e) => sum + e.amount, 0);
-  const totalMe = unsettled.filter(e => e.paid_by === myUserName).reduce((sum, e) => sum + e.amount, 0);
-  const totalPartner = unsettled.filter(e => e.paid_by !== myUserName).reduce((sum, e) => sum + e.amount, 0);
+  const totalMe = unsettled.filter(e => e.paid_by === myUserId).reduce((sum, e) => sum + e.amount, 0);
+  const totalPartner = unsettled.filter(e => e.paid_by !== myUserId).reduce((sum, e) => sum + e.amount, 0);
   const totalAmount = totalMe + totalPartner;
   const splitAmount = Math.round(totalAmount / 2); 
   const basicBalance = totalMe - splitAmount; 
   const pending = expenses.filter(e => !e.is_settled);
-  const myScanCount = pending.filter(e => e.paid_by === myUserName).length;
-  const partnerScanCount = pending.filter(e => e.paid_by !== myUserName).length;
+  const myScanCount = pending.filter(e => e.paid_by === myUserId).length;
+  const partnerScanCount = pending.filter(e => e.paid_by !== myUserId).length;
   const scanDiff = myScanCount - partnerScanCount; 
   const scanBonus = scanDiff * SCAN_BONUS_PER_ITEM; 
   const smartBalanceRaw = basicBalance + scanBonus;
@@ -417,7 +418,7 @@ export default function SettlementPage() {
             <>
               <ul className="space-y-3">
                 {expenses.slice(0, visibleCount).map((item) => {
-                  const isMe = item.paid_by === myUserName;
+                  const isMe = item.paid_by === myUserId;
                   const reactions = item.reactions || {};
                   const reactionEntries = Object.entries(reactions);
                   const comments = item.comments || [];
@@ -444,13 +445,13 @@ export default function SettlementPage() {
                           </div>
                           <div className="text-right shrink-0">
                             <p className={`font-black text-lg tabular ${item.is_excluded ? 'text-slate-400 line-through decoration-slate-300' : item.is_settled ? 'text-slate-400' : 'text-slate-800'}`}>¥{item.amount.toLocaleString()}</p>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-500'}`}>{item.paid_by}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isMe ? 'bg-slate-100 text-slate-600' : 'bg-rose-50 text-rose-500'}`}>{nameOf(item.paid_by)}</span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-1 mt-3 flex-wrap">
                           {reactionEntries.map(([user, reactionId]) => {
-                            const isMyReaction = user === myUserName;
+                            const isMyReaction = user === myUserId;
                             const reactionType = REACTION_TYPES.find(r => r.id === reactionId);
                             if (!reactionType) return null;
                             return (
@@ -461,7 +462,7 @@ export default function SettlementPage() {
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element -- 外部の小さな絵文字画像 */}
                                 <img src={reactionType.src} alt="" className="w-4 h-4 object-contain" />
-                                <span className="text-[10px] font-bold">{user}</span>
+                                <span className="text-[10px] font-bold">{nameOf(user)}</span>
                               </button>
                             );
                           })}
@@ -507,7 +508,7 @@ export default function SettlementPage() {
                             {comments.length > 0 ? (
                               <ul className="space-y-3 mb-4">
                                 {comments.map((comment, i) => {
-                                  const isMyComment = comment.user === myUserName;
+                                  const isMyComment = comment.user === myUserId;
                                   const isEditing = editingCommentId === comment.id;
                                   return (
                                     <li key={comment.id || i} className={`flex flex-col ${isMyComment ? 'items-end' : 'items-start'}`}>
@@ -525,7 +526,7 @@ export default function SettlementPage() {
                                             {comment.text}
                                           </div>
                                           <div className="flex items-center gap-2 mt-1 px-1">
-                                            <span className="text-[10px] font-bold text-slate-400">{comment.user}</span>
+                                            <span className="text-[10px] font-bold text-slate-400">{nameOf(comment.user)}</span>
                                             <span className="text-[10px] text-slate-300">{formatDate(comment.timestamp)}</span>
                                             {isMyComment && (
                                               <>
