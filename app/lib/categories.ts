@@ -10,7 +10,8 @@
 // short は入力欄のボタン用の短い名前（狭い iPhone でも収まるように）
 
 export type CategoryGroup = { id: string; icon: string; label: string; color: string | null };
-export type Category = { id: string; group: string; icon: string; label: string; short?: string };
+// fixed: 毎月ほぼ決まって出ていく固定費（家賃・光熱費・通信費・サブスク・保険・税金など）。それ以外は変動費
+export type Category = { id: string; group: string; icon: string; label: string; short?: string; fixed?: boolean };
 
 export const CATEGORY_GROUPS: CategoryGroup[] = [
   { id: 'food', icon: '🍙', label: '食費', color: '#2a78d6' },
@@ -38,14 +39,14 @@ export const CATEGORIES: Category[] = [
   { id: 'cafe', group: 'food', icon: '☕', label: 'カフェ' },
   { id: 'daily', group: 'daily', icon: '🧻', label: '日用品' },
   { id: 'drugstore', group: 'daily', icon: '🧴', label: 'ドラッグストア', short: 'ドラッグ' },
-  { id: 'housing', group: 'housing', icon: '🏠', label: '家賃・住まい', short: '家賃' },
+  { id: 'housing', group: 'housing', icon: '🏠', label: '家賃・住まい', short: '家賃', fixed: true },
   { id: 'furniture', group: 'housing', icon: '🛋️', label: '家具・家電', short: '家具家電' },
-  { id: 'electricity', group: 'utilities', icon: '💡', label: '電気' },
-  { id: 'gas', group: 'utilities', icon: '🔥', label: 'ガス' },
-  { id: 'water', group: 'utilities', icon: '🚰', label: '水道' },
-  { id: 'phone', group: 'communication', icon: '📱', label: '携帯' },
-  { id: 'internet', group: 'communication', icon: '🌐', label: 'ネット' },
-  { id: 'digital', group: 'communication', icon: '💻', label: 'サブスク・アプリ', short: 'サブスク' },
+  { id: 'electricity', group: 'utilities', icon: '💡', label: '電気', fixed: true },
+  { id: 'gas', group: 'utilities', icon: '🔥', label: 'ガス', fixed: true },
+  { id: 'water', group: 'utilities', icon: '🚰', label: '水道', fixed: true },
+  { id: 'phone', group: 'communication', icon: '📱', label: '携帯', fixed: true },
+  { id: 'internet', group: 'communication', icon: '🌐', label: 'ネット', fixed: true },
+  { id: 'digital', group: 'communication', icon: '💻', label: 'サブスク・アプリ', short: 'サブスク', fixed: true },
   { id: 'transport', group: 'transport', icon: '🚃', label: '電車・バス', short: '電車バス' },
   { id: 'car', group: 'transport', icon: '🚗', label: '車・ガソリン', short: '車' },
   { id: 'hobby', group: 'hobby', icon: '🎮', label: '趣味' },
@@ -59,9 +60,9 @@ export const CATEGORIES: Category[] = [
   { id: 'party', group: 'social', icon: '🍻', label: '飲み会' },
   { id: 'learning', group: 'education', icon: '📚', label: '本・学び', short: '本' },
   { id: 'course', group: 'education', icon: '🎓', label: '講座・習い事', short: '講座' },
-  { id: 'insurance', group: 'insurance', icon: '🛡️', label: '保険' },
-  { id: 'tax', group: 'tax', icon: '🧾', label: '所得税・住民税', short: '税金' },
-  { id: 'social_insurance', group: 'tax', icon: '🏛️', label: '社会保険料', short: '社会保険' },
+  { id: 'insurance', group: 'insurance', icon: '🛡️', label: '保険', fixed: true },
+  { id: 'tax', group: 'tax', icon: '🧾', label: '所得税・住民税', short: '税金', fixed: true },
+  { id: 'social_insurance', group: 'tax', icon: '🏛️', label: '社会保険料', short: '社会保険', fixed: true },
   { id: 'ceremony', group: 'special', icon: '💐', label: '冠婚葬祭' },
   { id: 'bigpurchase', group: 'special', icon: '💎', label: '大きな買い物', short: '大きな買物' },
   { id: 'other', group: 'other', icon: '📦', label: 'その他' },
@@ -127,3 +128,7 @@ export const sumByCategory = (items: { amount: number; category: string | null }
 // AI に分類を選ばせるときの一覧（'food'(食費 / 食料品) のように並べる）
 export const categoryPromptList = () =>
   CATEGORIES.map((c) => `'${c.id}'(${categoryPath(c.id)})`).join(', ');
+
+// 固定費か。サブスクから自動で記録した支出は、分類に関係なく固定費とみなす
+export const isFixedCost = (category: string | null | undefined, fromSubscription = false) =>
+  fromSubscription || !!findCategory(category).fixed;

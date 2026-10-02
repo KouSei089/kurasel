@@ -18,6 +18,7 @@ export type Entry = {
   paid_by: string | null; // 払った人のID。個人は null（自分）
   is_excluded: boolean; // おごり
   trip_name?: string;
+  from_subscription?: boolean; // サブスクから自動で記録した個人の支出（固定費として数える）
 };
 
 // 自分の負担分。ふたり・旅行は割り勘なので半分、おごりは払った人の全額、個人は全額。me は自分のID
@@ -62,7 +63,7 @@ export const loadEntries = async (from: string, to: string, me: string): Promise
     supabase.from('expenses').select('id, store_name, amount, purchase_date, paid_by, category, is_excluded').gte('purchase_date', from).lte('purchase_date', to),
     // 旅行は支払日（paid_on = 支払日、なければ利用日）で数える
     supabase.from('trip_expenses').select('id, store_name, amount, paid_on, paid_by, category, is_excluded, trips(name)').gte('paid_on', from).lte('paid_on', to),
-    supabase.from('personal_expenses').select('id, store_name, amount, purchase_date, category').eq('owner', me).gte('purchase_date', from).lte('purchase_date', to),
+    supabase.from('personal_expenses').select('id, store_name, amount, purchase_date, category, subscription_id').eq('owner', me).gte('purchase_date', from).lte('purchase_date', to),
   ]);
   for (const r of [shared, trips, personal]) if (r.error) console.error(r.error);
 
@@ -78,7 +79,7 @@ export const loadEntries = async (from: string, to: string, me: string): Promise
     })),
     ...(personal.data ?? []).map((e) => ({
       key: `personal-${e.id}`, source: 'personal' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date,
-      category: e.category, paid_by: null, is_excluded: false,
+      category: e.category, paid_by: null, is_excluded: false, from_subscription: !!e.subscription_id,
     })),
   ];
 };
