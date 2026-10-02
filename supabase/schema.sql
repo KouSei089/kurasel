@@ -291,6 +291,11 @@ create table if not exists public.incomes (
 create index if not exists incomes_household_date_idx
   on public.incomes (household_id, received_date desc);
 
+-- 給与明細から取り込んだとき、天引きされた税金・社会保険料は個人の支出として記録し、どの収入のものかを持つ。
+-- 収入（給与）を消すと、その控除も一緒に消える
+alter table public.personal_expenses
+  add column if not exists income_id bigint references public.incomes (id) on delete cascade;
+
 -- ------------------------------------------------------------
 -- 5-3. 持ち主の列
 -- ふたりの記録（日常・月次精算・旅行）は household_id で世帯に属する。

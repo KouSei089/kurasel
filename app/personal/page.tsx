@@ -25,6 +25,7 @@ type PersonalExpense = {
   category: string | null;
   receipt_url: string | null;
   subscription_id?: number | null; // サブスクから自動で記録したもの
+  income_id?: number | null; // 給与明細から記録した控除（天引きの税金・社会保険料など）
   created_at: string;
 };
 
@@ -372,6 +373,7 @@ export default function PersonalPage() {
                         <p className="text-slate-400 text-[11px] font-bold tabular flex items-center gap-1.5">
                           {formatYMD(item.purchase_date)}
                           {item.subscription_id && <span className="inline-flex items-center gap-0.5 px-1.5 rounded-full bg-violet-50 text-violet-600"><Repeat size={10} /> 自動</span>}
+                          {item.income_id && <span className="inline-flex items-center gap-0.5 px-1.5 rounded-full bg-emerald-50 text-emerald-600">給与天引き</span>}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
