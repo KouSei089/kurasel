@@ -19,7 +19,7 @@ const TREND_COLOR = '#334155';
 
 const demoEntries = (): Entry[] => [
   ...DEMO_EXPENSES.map((e) => ({ key: `shared-${e.id}`, source: 'shared' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded })),
-  ...DEMO_TRIP_EXPENSES.map((e) => ({ key: `trip-${e.id}`, source: 'trip' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded, trip_name: DEMO_TRIPS.find((t) => t.id === e.trip_id)?.name })),
+  ...DEMO_TRIP_EXPENSES.map((e) => ({ key: `trip-${e.id}`, source: 'trip' as const, store_name: e.store_name, amount: e.amount, date: e.paid_date ?? e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded, trip_name: DEMO_TRIPS.find((t) => t.id === e.trip_id)?.name })),
   ...DEMO_PERSONAL_EXPENSES.map((e) => ({ key: `personal-${e.id}`, source: 'personal' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: null, is_excluded: false })),
 ];
 

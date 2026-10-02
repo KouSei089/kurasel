@@ -209,6 +209,17 @@ alter table public.trip_expenses
 create index if not exists trip_expenses_trip_id_idx
   on public.trip_expenses (trip_id);
 
+-- 利用日（purchase_date）と支払日を分ける。宿や新幹線を前もって予約して払ったときなど、
+-- 利用日と違うときだけ paid_date を入れる（null なら利用日に払った）。
+-- 分析はお金が出ていった日で数えるので、どちらか決まった方を paid_on として持つ（自動で計算される列）
+alter table public.trip_expenses
+  add column if not exists paid_date date;
+alter table public.trip_expenses
+  add column if not exists paid_on date generated always as (coalesce(paid_date, purchase_date)) stored;
+
+create index if not exists trip_expenses_paid_on_idx
+  on public.trip_expenses (paid_on);
+
 -- ------------------------------------------------------------
 -- 5. 個人の支出
 -- ふたりの家計・精算とは混ざらないよう、テーブルごと分けている。

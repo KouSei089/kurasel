@@ -13,7 +13,7 @@ export type Entry = {
   source: Source;
   store_name: string;
   amount: number;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD。お金が出ていった日（旅行は支払日）
   category: string | null;
   paid_by: string | null; // 払った人のID。個人は null（自分）
   is_excluded: boolean; // おごり
@@ -60,7 +60,8 @@ export const trendMonths = (p: Period): string[] => {
 export const loadEntries = async (from: string, to: string, me: string): Promise<Entry[]> => {
   const [shared, trips, personal] = await Promise.all([
     supabase.from('expenses').select('id, store_name, amount, purchase_date, paid_by, category, is_excluded').gte('purchase_date', from).lte('purchase_date', to),
-    supabase.from('trip_expenses').select('id, store_name, amount, purchase_date, paid_by, category, is_excluded, trips(name)').gte('purchase_date', from).lte('purchase_date', to),
+    // 旅行は支払日（paid_on = 支払日、なければ利用日）で数える
+    supabase.from('trip_expenses').select('id, store_name, amount, paid_on, paid_by, category, is_excluded, trips(name)').gte('paid_on', from).lte('paid_on', to),
     supabase.from('personal_expenses').select('id, store_name, amount, purchase_date, category').eq('owner', me).gte('purchase_date', from).lte('purchase_date', to),
   ]);
   for (const r of [shared, trips, personal]) if (r.error) console.error(r.error);
@@ -71,7 +72,7 @@ export const loadEntries = async (from: string, to: string, me: string): Promise
       category: e.category, paid_by: e.paid_by, is_excluded: !!e.is_excluded,
     })),
     ...(trips.data ?? []).map((e) => ({
-      key: `trip-${e.id}`, source: 'trip' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date,
+      key: `trip-${e.id}`, source: 'trip' as const, store_name: e.store_name, amount: e.amount, date: e.paid_on,
       category: e.category, paid_by: e.paid_by, is_excluded: !!e.is_excluded,
       trip_name: (e.trips as unknown as { name: string } | null)?.name,
     })),

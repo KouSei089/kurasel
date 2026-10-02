@@ -102,13 +102,13 @@ export const DEMO_TRIPS = [
 ];
 
 export const DEMO_TRIP_EXPENSES = [
-  { id: 7701, trip_id: 8801, store_name: '新幹線（往復）', amount: 56000, purchase_date: '2024-11-22', paid_by: 'あなた', category: 'transport', receipt_url: null, is_excluded: false, is_settled: true, created_at: '2024-11-22T08:00:00' },
-  { id: 7702, trip_id: 8801, store_name: '町家ステイ', amount: 42000, purchase_date: '2024-11-22', paid_by: 'パートナー', category: 'lodging', receipt_url: null, is_excluded: false, is_settled: true, created_at: '2024-11-22T15:00:00' },
-  { id: 7703, trip_id: 8801, store_name: '湯豆腐 ランチ', amount: 6800, purchase_date: '2024-11-23', paid_by: 'パートナー', category: 'eatout', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-11-23T12:30:00' },
-  { id: 7704, trip_id: 8801, store_name: '清水寺 拝観料', amount: 1000, purchase_date: '2024-11-23', paid_by: 'あなた', category: 'hobby', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-11-23T10:00:00' },
-  { id: 7705, trip_id: 8801, store_name: '八ツ橋', amount: 2400, purchase_date: '2024-11-24', paid_by: 'あなた', category: 'souvenir', receipt_url: null, is_excluded: true, is_settled: false, created_at: '2024-11-24T14:00:00' },
-  { id: 7711, trip_id: 8802, store_name: 'ロマンスカー', amount: 9000, purchase_date: '2024-08-10', paid_by: 'あなた', category: 'transport', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-08-10T09:00:00' },
-  { id: 7712, trip_id: 8802, store_name: '温泉旅館', amount: 38000, purchase_date: '2024-08-10', paid_by: 'パートナー', category: 'lodging', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-08-10T15:00:00' },
+  { id: 7701, trip_id: 8801, store_name: '新幹線（往復）', amount: 56000, purchase_date: '2024-11-22', paid_date: '2024-10-01', paid_by: 'あなた', category: 'transport', receipt_url: null, is_excluded: false, is_settled: true, created_at: '2024-11-22T08:00:00' },
+  { id: 7702, trip_id: 8801, store_name: '町家ステイ', amount: 42000, purchase_date: '2024-11-22', paid_date: '2024-08-15', paid_by: 'パートナー', category: 'lodging', receipt_url: null, is_excluded: false, is_settled: true, created_at: '2024-11-22T15:00:00' },
+  { id: 7703, trip_id: 8801, store_name: '湯豆腐 ランチ', amount: 6800, purchase_date: '2024-11-23', paid_date: null, paid_by: 'パートナー', category: 'eatout', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-11-23T12:30:00' },
+  { id: 7704, trip_id: 8801, store_name: '清水寺 拝観料', amount: 1000, purchase_date: '2024-11-23', paid_date: null, paid_by: 'あなた', category: 'hobby', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-11-23T10:00:00' },
+  { id: 7705, trip_id: 8801, store_name: '八ツ橋', amount: 2400, purchase_date: '2024-11-24', paid_date: null, paid_by: 'あなた', category: 'souvenir', receipt_url: null, is_excluded: true, is_settled: false, created_at: '2024-11-24T14:00:00' },
+  { id: 7711, trip_id: 8802, store_name: 'ロマンスカー', amount: 9000, purchase_date: '2024-08-10', paid_date: null, paid_by: 'あなた', category: 'transport', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-08-10T09:00:00' },
+  { id: 7712, trip_id: 8802, store_name: '温泉旅館', amount: 38000, purchase_date: '2024-08-10', paid_date: null, paid_by: 'パートナー', category: 'lodging', receipt_url: null, is_excluded: false, is_settled: false, created_at: '2024-08-10T15:00:00' },
 ];
 // 個人の支出（デモでは「あなた」の分だけ）
 export const DEMO_PERSONAL_EXPENSES = [
