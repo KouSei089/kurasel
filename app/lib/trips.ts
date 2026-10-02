@@ -17,7 +17,8 @@ export type TripExpense = {
   trip_id: number;
   store_name: string;
   amount: number;
-  purchase_date: string;
+  purchase_date: string; // 利用日（旅行のどの日に使ったか）
+  paid_date: string | null; // 支払日。予約して先に払ったときなど、利用日と違うときだけ入れる。null なら利用日に払った
   paid_by: string;
   category: string | null;
   receipt_url: string | null;

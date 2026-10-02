@@ -50,7 +50,8 @@ export default function TripDetailPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [storeName, setStoreName] = useState('');
   const [amount, setAmount] = useState('');
-  const [purchaseDate, setPurchaseDate] = useState(todayYMD());
+  const [purchaseDate, setPurchaseDate] = useState(todayYMD()); // 利用日
+  const [paidDate, setPaidDate] = useState(''); // 支払日。空なら利用日と同じ
   const [category, setCategory] = useState('eatout');
   const [paidBy, setPaidBy] = useState(''); // 払った人のID。空なら自分
   const currentPaidBy = paidBy || myUserId;
@@ -134,6 +135,7 @@ export default function TripDetailPage() {
     setPaidBy('');
     setIsExcluded(false);
     setPurchaseDate(defaultDateFor(trip));
+    setPaidDate('');
     clearImage();
   };
 
@@ -157,7 +159,12 @@ export default function TripDetailPage() {
       const data = await scanReceipt(processFile);
       if (data.store_name) setStoreName(data.store_name);
       if (data.amount) setAmount(String(data.amount));
-      if (data.date) setPurchaseDate(data.date);
+      // レシートの日付は払った日。旅行の期間内なら利用日、期間外（前もって予約したなど）なら支払日として入れる
+      if (data.date) {
+        const inTrip = trip?.start_date && data.date >= trip.start_date && data.date <= (trip.end_date || trip.start_date);
+        if (inTrip || !trip?.start_date) setPurchaseDate(data.date);
+        else setPaidDate(data.date);
+      }
       setCategory(normalizeCategory(data.category));
     } catch (err) {
       console.error('Scan error:', err);
@@ -179,6 +186,7 @@ export default function TripDetailPage() {
         store_name: storeName,
         amount: Number(amount),
         purchase_date: purchaseDate,
+        paid_date: paidDate && paidDate !== purchaseDate ? paidDate : null,
         paid_by: currentPaidBy,
         category,
         is_excluded: isExcluded,
@@ -216,6 +224,7 @@ export default function TripDetailPage() {
     setStoreName(item.store_name);
     setAmount(String(item.amount));
     setPurchaseDate(item.purchase_date);
+    setPaidDate(item.paid_date ?? '');
     setCategory(item.category || 'other');
     setPaidBy(item.paid_by);
     setIsExcluded(item.is_excluded);
@@ -447,10 +456,23 @@ export default function TripDetailPage() {
                   <Field label="金額 (円)" className="flex-1 min-w-0">
                     <input type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className={`${inputClass} text-right text-xl font-black tabular`} />
                   </Field>
-                  <Field label="日付" className="w-full min-[360px]:w-[46%] shrink-0">
+                  <Field label="利用日" className="w-full min-[360px]:w-[46%] shrink-0">
                     <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className={`${inputClass} !px-3 text-sm h-[56px]`} />
                   </Field>
                 </div>
+                {/* 宿や新幹線を前もって予約して払ったときは、払った日を別に持つ。分析ではこちらの月で数える */}
+                <Field label="支払日">
+                  <div className="grid grid-cols-2 gap-2">
+                    <ChoiceButton selected={!paidDate} onClick={() => setPaidDate('')} className="py-2.5 text-sm font-bold">利用日と同じ</ChoiceButton>
+                    <ChoiceButton selected={!!paidDate} onClick={() => setPaidDate(paidDate || todayYMD())} className="py-2.5 text-sm font-bold">別の日に払った</ChoiceButton>
+                  </div>
+                  {paidDate && (
+                    <>
+                      <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} className={`${inputClass} !px-3 text-sm h-[52px] mt-2`} />
+                      <p className="text-[10px] text-slate-400 mt-1.5 ml-1">予約して先に払ったときなど。分析ではこの日の月で数えます</p>
+                    </>
+                  )}
+                </Field>
                 <Field label="カテゴリ">
                   <CategoryPicker context="trip" value={category} onChange={setCategory} />
                 </Field>
@@ -499,7 +521,10 @@ export default function TripDetailPage() {
                                 <a href={item.receipt_url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-slate-700 shrink-0" aria-label="レシート画像を開く"><Paperclip size={14} /></a>
                               )}
                             </div>
-                            <p className="text-slate-400 text-[11px] font-bold tabular">{formatYMD(item.purchase_date)}</p>
+                            <p className="text-slate-400 text-[11px] font-bold tabular">
+                              {formatYMD(item.purchase_date)}
+                              {item.paid_date && <span className="ml-1.5 px-1.5 rounded-full bg-sky-50 text-sky-600">支払 {formatYMD(item.paid_date)}</span>}
+                            </p>
                           </div>
                         </div>
                         <div className="text-right shrink-0">
