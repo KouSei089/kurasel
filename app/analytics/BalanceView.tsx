@@ -6,6 +6,7 @@ import { groupOf } from '../lib/categories';
 import { Entry, myShare } from '../lib/analytics';
 import { myIncomeShare, type Income } from '../lib/income';
 import { CHART_COLORS, MonthChart } from './MonthChart';
+import { FixedCostCard } from './FixedCostCard';
 
 // 収支（自分の分）。収入から支出を引いて、いくら残ったか（貯金できた額）を見る。
 // 相手の個人の収入・支出は見えないので、ふたりの分は半分ずつにした「自分の分」で比べる
@@ -118,6 +119,8 @@ export function BalanceView({ entries, incomes, from, to, months, focusMonth, on
           {tax === 0 && <p className="text-[10px] text-slate-400 mt-2">給与明細を取り込むと、税金・社会保険料も入ります</p>}
         </Card>
       )}
+
+      <FixedCostCard entries={entries.filter((e) => e.date >= from && e.date <= to)} myUserId={myUserId} monthCount={months.filter((m) => `${m}-01` >= from.slice(0, 8) + '01' && `${m}-01` <= to).length} />
 
       {/* 月ごとの収入と支出 */}
       <Card className="p-5 mb-6">
