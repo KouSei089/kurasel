@@ -1,21 +1,32 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
-import Link from 'next/link';
 import { PageShell, PageHeader, Card, MonthSwitcher, ChoiceButton, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../components/ui';
 import { CATEGORY_GROUPS, findCategory, findGroup, groupOf, sumByCategory } from '../lib/categories';
 import { Entry, Period, SOURCE_LABEL, Source, loadEntries, loadIncomes, myShare, periodRange, trendMonths } from '../lib/analytics';
-import { myIncomeShare, type Income } from '../lib/income';
+import type { Income } from '../lib/income';
+import { BalanceView } from './BalanceView';
+import { IncomeView } from './IncomeView';
+import { CHART_COLORS, MonthChart } from './MonthChart';
 import { DEMO_EXPENSES, DEMO_INCOMES, DEMO_PERSONAL_EXPENSES, DEMO_TRIPS, DEMO_TRIP_EXPENSES } from '../lib/demoData';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { todayYMD } from '../lib/date';
 
-// ふたり・旅行・個人の支出をまとめて見る分析画面。期間と絞り込みを変えて、合計・分類・推移・明細を見る
+// 分析画面。期間を選び、3つの見方を切り替える
+//   収支: 収入 − 支出（自分の分）、収入の使いみち、月ごとの収入と支出
+//   支出: ふたり・旅行・個人の支出を、絞り込み・分類・推移・明細で見る
+//   収入: 自分の収入とふたりの収入、給与の手取り、分類・推移・明細
+
+type View = 'balance' | 'expense' | 'income';
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'balance', label: '収支' },
+  { id: 'expense', label: '支出' },
+  { id: 'income', label: '収入' },
+];
 
 const SOURCES: Source[] = ['shared', 'trip', 'personal'];
 // ふたり・旅行・個人の色は、各画面の色（ネイビー・スカイ・バイオレット）と同じ
 const SOURCE_DOT: Record<Source, string> = { shared: 'bg-slate-700', trip: 'bg-sky-500', personal: 'bg-violet-500' };
-const TREND_COLOR = '#334155';
 
 const demoEntries = (): Entry[] => [
   ...DEMO_EXPENSES.map((e) => ({ key: `shared-${e.id}`, source: 'shared' as const, store_name: e.store_name, amount: e.amount, date: e.purchase_date, category: e.category, paid_by: e.paid_by, is_excluded: e.is_excluded })),
@@ -35,6 +46,7 @@ export default function AnalyticsPage() {
     const demo = typeof window !== 'undefined' && localStorage.getItem('kurasel_mode') === 'demo';
     return { mode: demo ? 'year' : 'month', month: new Date(now.getFullYear(), now.getMonth(), 1), year: demo ? 2024 : now.getFullYear(), from: todayYMD().slice(0, 8) + '01', to: todayYMD() };
   });
+  const [view, setView] = useState<View>('balance');
   const [amountMode, setAmountMode] = useState<'total' | 'share'>('total');
   const [sources, setSources] = useState<Source[]>(SOURCES);
   const [categories, setCategories] = useState<string[]>([]); // 大分類の id。空ならすべて
@@ -79,12 +91,8 @@ export default function AnalyticsPage() {
       (!kw || e.store_name?.toLowerCase().includes(kw) || e.trip_name?.toLowerCase().includes(kw));
   }, [sources, categories, payer, keyword, myUserId]);
 
-  // 収支（自分の分）。絞り込みには関係なく、期間内のすべてで出す。
-  // 相手の個人の収入・支出は見えないので、ふたりの分は半分ずつにした「自分の分」で比べる
-  const periodIncomes = (isDemoMode ? DEMO_INCOMES : incomes).filter((i) => i.received_date >= from && i.received_date <= to);
-  const incomeMine = periodIncomes.reduce((sum, i) => sum + myIncomeShare(i), 0);
-  const expenseMine = all.filter((e) => e.date >= from && e.date <= to).reduce((sum, e) => sum + myShare(e, myUserId), 0);
-  const balanceMine = incomeMine - expenseMine;
+  const allIncomes = isDemoMode ? DEMO_INCOMES : incomes;
+  const periodLabel = period.mode === 'month' ? `${period.month.getMonth() + 1}月` : period.mode === 'year' ? `${period.year}年` : 'この期間';
 
   const value = (e: Entry) => (amountMode === 'total' ? e.amount : myShare(e, myUserId));
 
@@ -95,8 +103,9 @@ export default function AnalyticsPage() {
   const categoryItems = sumByCategory(inPeriod.map((e) => ({ amount: value(e), category: e.category })));
 
   const trend = months.map((m) => ({ month: m, value: filtered.filter((e) => e.date.startsWith(m)).reduce((sum, e) => sum + value(e), 0) }));
-  const trendMax = Math.max(...trend.map((t) => t.value), 1);
-  const focusMonth = selectedMonth && months.includes(selectedMonth) ? selectedMonth : months[months.length - 1];
+  // 最初に選んでおく月は、記録（収入か支出）がある一番新しい月。年で見ているときに、まだ来ていない月を選ばないように
+  const latestWithData = [...months].reverse().find((m) => all.some((e) => e.date.startsWith(m)) || allIncomes.some((i) => i.received_date.startsWith(m)));
+  const focusMonth = selectedMonth && months.includes(selectedMonth) ? selectedMonth : latestWithData ?? months[months.length - 1];
   const focus = trend.find((t) => t.month === focusMonth);
 
   const hasFilter = sources.length < SOURCES.length || categories.length > 0 || payer !== 'all' || keyword.trim() !== '';
@@ -107,7 +116,17 @@ export default function AnalyticsPage() {
 
   return (
     <PageShell isDemoMode={isDemoMode}>
-      <PageHeader title="分析" subtitle="ふたり・旅行・個人の支出をまとめて見ます" isDemoMode={isDemoMode} />
+      <PageHeader title="分析" subtitle="収入と支出、いくら残ったかを見ます" isDemoMode={isDemoMode} />
+
+      {/* 見方の切り替え */}
+      <div className="flex gap-1 p-1 bg-white/80 border border-white rounded-2xl shadow-sm mb-4" role="tablist">
+        {VIEWS.map((v) => (
+          <button key={v.id} role="tab" aria-selected={view === v.id} onClick={() => setView(v.id)}
+            className={`flex-1 py-2 rounded-xl text-sm font-black transition-colors ${view === v.id ? 'bg-slate-800 text-white shadow' : 'text-slate-500 hover:text-slate-700'}`}>
+            {v.label}
+          </button>
+        ))}
+      </div>
 
       {/* 期間 */}
       <div className="grid grid-cols-3 gap-1.5 mb-3">
@@ -131,8 +150,8 @@ export default function AnalyticsPage() {
         </Card>
       )}
 
-      {/* 絞り込み */}
-      <Card className="p-4 mb-6 space-y-3">
+      {/* 絞り込み（支出だけ） */}
+      {view === 'expense' && <Card className="p-4 mb-6 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-black text-sm text-slate-800">絞り込み</h3>
           {hasFilter && <button onClick={resetFilters} className="flex items-center gap-1 text-[11px] font-bold text-slate-400 hover:text-slate-600"><X size={12} /> 解除</button>}
@@ -168,9 +187,13 @@ export default function AnalyticsPage() {
             </div>
           )}
         </div>
-      </Card>
+      </Card>}
 
-      {isLoading ? <Loading /> : (
+      {isLoading ? <Loading /> : view === 'balance' ? (
+        <BalanceView entries={all} incomes={allIncomes} from={from} to={to} months={months} focusMonth={focusMonth} onFocusMonth={setSelectedMonth} periodLabel={periodLabel} isMonthMode={period.mode === 'month'} myUserId={myUserId} />
+      ) : view === 'income' ? (
+        <IncomeView entries={all} incomes={allIncomes} from={from} to={to} months={months} focusMonth={focusMonth} onFocusMonth={setSelectedMonth} periodLabel={periodLabel} myUserId={myUserId} nameOf={nameOf} />
+      ) : (
         <>
           {/* 合計 */}
           <div className="relative overflow-hidden rounded-3xl p-6 text-white bg-gradient-to-br from-slate-700 to-slate-900 shadow-xl shadow-slate-800/25 mb-3">
@@ -197,62 +220,13 @@ export default function AnalyticsPage() {
             ))}
           </div>
 
-          {/* 収支（自分の分） */}
-          <Card className="p-5 mb-6">
-            <div className="flex items-baseline justify-between gap-2 mb-3">
-              <h3 className="font-black text-sm text-slate-800">収支<span className="text-[10px] font-bold text-slate-400 ml-1.5">自分の分</span></h3>
-              <span className={`text-lg font-black tabular ${balanceMine >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{balanceMine >= 0 ? '+' : '−'}{yen(Math.abs(balanceMine))}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-2xl bg-emerald-50 px-3 py-2">
-                <p className="font-bold text-emerald-700/70">収入</p>
-                <p className="font-black text-emerald-700 tabular">{yen(incomeMine)}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-100 px-3 py-2">
-                <p className="font-bold text-slate-500">支出</p>
-                <p className="font-black text-slate-700 tabular">{yen(expenseMine)}</p>
-              </div>
-            </div>
-            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-              {periodIncomes.length === 0
-                ? <>収入が未登録です。<Link href="/income" className="font-bold text-slate-600 underline underline-offset-2">収入を記録</Link>すると、貯金できた額がわかります</>
-                : 'ふたりの収入・支出は半分、おごりは払った人、個人は全額で計算（絞り込みは反映しません）'}
-            </p>
-          </Card>
-
           {/* 月ごとの推移（1系列なので凡例なし。棒を押すとその月の金額を出す） */}
           <Card className="p-5 mb-6">
             <div className="flex items-baseline justify-between gap-2 mb-4">
-              <h3 className="font-black text-sm text-slate-800">月ごとの推移</h3>
+              <h3 className="font-black text-sm text-slate-800">月ごとの支出</h3>
               {focus && <span className="text-xs font-bold text-slate-500 tabular">{Number(focus.month.slice(5))}月 <span className="text-slate-800 font-black">{yen(focus.value)}</span></span>}
             </div>
-            <div className="flex items-end gap-0.5 h-32 border-b border-slate-200" role="img" aria-label="月ごとの支出の推移">
-              {trend.map((t) => {
-                const isFocus = t.month === focusMonth;
-                return (
-                  <button
-                    key={t.month}
-                    onClick={() => setSelectedMonth(t.month)}
-                    onMouseEnter={() => setSelectedMonth(t.month)}
-                    className="flex-1 h-full flex flex-col justify-end items-center group"
-                    aria-label={`${t.month.replace('-', '年')}月 ${yen(t.value)}`}
-                  >
-                    <span
-                      className={`w-full max-w-7 rounded-t-[4px] transition-opacity ${isFocus ? 'opacity-100' : 'opacity-35 group-hover:opacity-60'}`}
-                      style={{ height: `${(t.value / trendMax) * 100}%`, minHeight: t.value > 0 ? 2 : 0, backgroundColor: TREND_COLOR }}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-0.5 mt-1.5">
-              {trend.map((t, i) => (
-                <span key={t.month} className={`flex-1 text-center text-[9px] font-bold tabular ${t.month === focusMonth ? 'text-slate-700' : 'text-slate-400'}`}>
-                  {/* 12か月以上は1つおきに月を出す */}
-                  {trend.length > 8 && i % 2 === 1 && t.month !== focusMonth ? '' : Number(t.month.slice(5))}
-                </span>
-              ))}
-            </div>
+            <MonthChart months={months} series={[{ key: 'expense', label: '支出', color: CHART_COLORS.expense, values: trend.map((t) => t.value) }]} focusMonth={focusMonth} onFocus={setSelectedMonth} label="月ごとの支出の推移" />
           </Card>
 
           <CategoryBreakdown title="分類別" items={categoryItems} />

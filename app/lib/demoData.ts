@@ -116,6 +116,11 @@ export const DEMO_PERSONAL_EXPENSES = [
   { id: 6602, owner: 'あなた', store_name: 'Steam（ゲーム）', amount: 2800, purchase_date: '2024-02-12', category: 'hobby', receipt_url: null, created_at: '2024-02-12T22:00:00' },
   { id: 6603, owner: 'あなた', store_name: '会社近くのランチ', amount: 980, purchase_date: '2024-02-09', category: 'eatout', receipt_url: null, created_at: '2024-02-09T12:30:00' },
   { id: 6604, owner: 'あなた', store_name: '美容院', amount: 5500, purchase_date: '2024-02-03', category: 'fashion', receipt_url: null, created_at: '2024-02-03T11:00:00' },
+  // 2月の給与明細から記録した控除（給与天引き）
+  { id: 6605, owner: 'あなた', store_name: '厚生年金保険料（2月給与）', amount: 25620, purchase_date: '2024-02-25', category: 'social_insurance', receipt_url: null, created_at: '2024-02-25T09:00:00', income_id: 4401 },
+  { id: 6606, owner: 'あなた', store_name: '健康保険料（2月給与）', amount: 13860, purchase_date: '2024-02-25', category: 'social_insurance', receipt_url: null, created_at: '2024-02-25T09:00:00', income_id: 4401 },
+  { id: 6607, owner: 'あなた', store_name: '住民税（2月給与）', amount: 15400, purchase_date: '2024-02-25', category: 'tax', receipt_url: null, created_at: '2024-02-25T09:00:00', income_id: 4401 },
+  { id: 6608, owner: 'あなた', store_name: '所得税（2月給与）', amount: 6640, purchase_date: '2024-02-25', category: 'tax', receipt_url: null, created_at: '2024-02-25T09:00:00', income_id: 4401 },
 ];
 
 // サブスク（デモでは「あなた」の分だけ）。支払日はデモを開いた日から何日後かで持つ
