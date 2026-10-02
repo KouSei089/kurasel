@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { supabase } from './lib/supabase';
-import { Check, Loader2, Smartphone, ChevronRight, Users, UserPlus } from 'lucide-react';
+import { Check, Loader2, Smartphone, ChevronRight, Users, UserPlus, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import Modal from './components/Modal';
 import ExcludedToggle from './components/ExcludedToggle';
@@ -210,6 +210,17 @@ export default function Home() {
           <span>
             <span className="block text-sm font-bold text-slate-700">決済アプリの履歴から取り込む</span>
             <span className="block text-[10px] text-slate-400">ハーンPayなどのスクショからまとめて登録</span>
+          </span>
+        </span>
+        <ChevronRight size={16} className="text-slate-300 shrink-0" />
+      </Link>
+
+      <Link href="/income" className="mt-3 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-white/70 border border-white shadow-sm hover:bg-white transition-colors">
+        <span className="flex items-center gap-3">
+          <span className="p-2 rounded-full bg-emerald-50 text-emerald-600"><Wallet size={16} /></span>
+          <span>
+            <span className="block text-sm font-bold text-slate-700">収入を記録する</span>
+            <span className="block text-[10px] text-slate-400">ふたりの収入・自分の給料など。分析で収支を見られます</span>
           </span>
         </span>
         <ChevronRight size={16} className="text-slate-300 shrink-0" />

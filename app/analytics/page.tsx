@@ -1,10 +1,12 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import Link from 'next/link';
 import { PageShell, PageHeader, Card, MonthSwitcher, ChoiceButton, CategoryBreakdown, EmptyState, Loading, buttonClass, inputClass } from '../components/ui';
-import { CATEGORIES, findCategory, normalizeCategory, sumByCategory } from '../lib/categories';
-import { Entry, Period, SOURCE_LABEL, Source, loadEntries, myShare, periodRange, trendMonths } from '../lib/analytics';
-import { DEMO_EXPENSES, DEMO_PERSONAL_EXPENSES, DEMO_TRIPS, DEMO_TRIP_EXPENSES } from '../lib/demoData';
+import { CATEGORY_GROUPS, findCategory, findGroup, groupOf, sumByCategory } from '../lib/categories';
+import { Entry, Period, SOURCE_LABEL, Source, loadEntries, loadIncomes, myShare, periodRange, trendMonths } from '../lib/analytics';
+import { myIncomeShare, type Income } from '../lib/income';
+import { DEMO_EXPENSES, DEMO_INCOMES, DEMO_PERSONAL_EXPENSES, DEMO_TRIPS, DEMO_TRIP_EXPENSES } from '../lib/demoData';
 import { useCurrentUser } from '../lib/useCurrentUser';
 import { todayYMD } from '../lib/date';
 
@@ -35,7 +37,7 @@ export default function AnalyticsPage() {
   });
   const [amountMode, setAmountMode] = useState<'total' | 'share'>('total');
   const [sources, setSources] = useState<Source[]>(SOURCES);
-  const [categories, setCategories] = useState<string[]>([]); // 空ならすべて
+  const [categories, setCategories] = useState<string[]>([]); // 大分類の id。空ならすべて
   const [payer, setPayer] = useState<'all' | 'me' | 'partner'>('all');
   const [keyword, setKeyword] = useState('');
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
@@ -43,6 +45,7 @@ export default function AnalyticsPage() {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [incomes, setIncomes] = useState<Income[]>([]);
   const [loadedKey, setLoadedKey] = useState('');
 
   const [from, to] = periodRange(period);
@@ -54,9 +57,10 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!myUserId || isDemoMode) return;
     let cancelled = false;
-    loadEntries(fetchFrom, to, myUserId).then((data) => {
+    Promise.all([loadEntries(fetchFrom, to, myUserId), loadIncomes(fetchFrom, to, myUserId)]).then(([data, incomeData]) => {
       if (cancelled) return;
       setEntries(data);
+      setIncomes(incomeData);
       setLoadedKey(fetchKey);
     });
     return () => { cancelled = true; };
@@ -70,10 +74,17 @@ export default function AnalyticsPage() {
     const kw = keyword.trim().toLowerCase();
     return (e: Entry) =>
       sources.includes(e.source) &&
-      (categories.length === 0 || categories.includes(normalizeCategory(e.category))) &&
+      (categories.length === 0 || categories.includes(groupOf(e.category))) &&
       (payer === 'all' || (payer === 'me' ? e.source === 'personal' || e.paid_by === myUserId : e.source !== 'personal' && e.paid_by !== myUserId)) &&
       (!kw || e.store_name?.toLowerCase().includes(kw) || e.trip_name?.toLowerCase().includes(kw));
   }, [sources, categories, payer, keyword, myUserId]);
+
+  // 収支（自分の分）。絞り込みには関係なく、期間内のすべてで出す。
+  // 相手の個人の収入・支出は見えないので、ふたりの分は半分ずつにした「自分の分」で比べる
+  const periodIncomes = (isDemoMode ? DEMO_INCOMES : incomes).filter((i) => i.received_date >= from && i.received_date <= to);
+  const incomeMine = periodIncomes.reduce((sum, i) => sum + myIncomeShare(i), 0);
+  const expenseMine = all.filter((e) => e.date >= from && e.date <= to).reduce((sum, e) => sum + myShare(e, myUserId), 0);
+  const balanceMine = incomeMine - expenseMine;
 
   const value = (e: Entry) => (amountMode === 'total' ? e.amount : myShare(e, myUserId));
 
@@ -144,12 +155,12 @@ export default function AnalyticsPage() {
         </div>
         <div>
           <button onClick={() => setShowCategoryFilter(!showCategoryFilter)} className="w-full flex items-center justify-between text-xs font-bold text-slate-500 py-1">
-            <span>分類：{categories.length === 0 ? 'すべて' : categories.map((id) => findCategory(id).label).join('・')}</span>
+            <span>分類：{categories.length === 0 ? 'すべて' : categories.map((id) => findGroup(id).label).join('・')}</span>
             <ChevronDown size={14} className={`transition-transform ${showCategoryFilter ? 'rotate-180' : ''}`} />
           </button>
           {showCategoryFilter && (
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {CATEGORIES.map((c) => (
+              {CATEGORY_GROUPS.map((c) => (
                 <button key={c.id} onClick={() => setCategories((prev) => toggle(prev, c.id))} className={`px-2.5 py-1 rounded-full border text-[11px] font-bold transition-colors ${categories.includes(c.id) ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500'}`}>
                   {c.icon} {c.label}
                 </button>
@@ -185,6 +196,29 @@ export default function AnalyticsPage() {
               </Card>
             ))}
           </div>
+
+          {/* 収支（自分の分） */}
+          <Card className="p-5 mb-6">
+            <div className="flex items-baseline justify-between gap-2 mb-3">
+              <h3 className="font-black text-sm text-slate-800">収支<span className="text-[10px] font-bold text-slate-400 ml-1.5">自分の分</span></h3>
+              <span className={`text-lg font-black tabular ${balanceMine >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{balanceMine >= 0 ? '+' : '−'}{yen(Math.abs(balanceMine))}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-2xl bg-emerald-50 px-3 py-2">
+                <p className="font-bold text-emerald-700/70">収入</p>
+                <p className="font-black text-emerald-700 tabular">{yen(incomeMine)}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-100 px-3 py-2">
+                <p className="font-bold text-slate-500">支出</p>
+                <p className="font-black text-slate-700 tabular">{yen(expenseMine)}</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+              {periodIncomes.length === 0
+                ? <>収入が未登録です。<Link href="/income" className="font-bold text-slate-600 underline underline-offset-2">収入を記録</Link>すると、貯金できた額がわかります</>
+                : 'ふたりの収入・支出は半分、おごりは払った人、個人は全額で計算（絞り込みは反映しません）'}
+            </p>
+          </Card>
 
           {/* 月ごとの推移（1系列なので凡例なし。棒を押すとその月の金額を出す） */}
           <Card className="p-5 mb-6">

@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { isSignedIn } from "../../lib/serverAuth";
+import { categoryPromptList } from "../../lib/categories";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
       - store_name (店名: 文字列。不明なら"不明")
       - amount (合計金額: 数値)
       - date (日付: YYYY-MM-DD形式)
-      - category (カテゴリ: 'food'(食費・スーパー), 'eatout'(外食・カフェ・食堂), 'daily'(日用品・ドラッグストア), 'housing'(家賃・電気・ガス・水道・家具), 'digital'(スマホ・ネット・AIやアプリの利用料・サブスク・システム使用料), 'transport'(交通費・ガソリン), 'hobby'(趣味・娯楽・レジャー・観光), 'lodging'(宿泊), 'fashion'(服・美容), 'learning'(本・講座・仕事道具), 'health'(病院・薬), 'souvenir'(お土産・贈り物), 'other'(その他) から推測)
+      - category (分類: ${categoryPromptList()} から、いちばん近いものの id を1つ推測。スーパーは 'food'、ドラッグストアで日用品が中心なら 'drugstore'、AIやアプリの利用料は 'digital')
       JSONのみを出力してください。余計なマークダウンは不要です。
     `;
 

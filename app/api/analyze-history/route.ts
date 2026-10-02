@@ -1,14 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { isSignedIn } from "../../lib/serverAuth";
+import { CATEGORIES, categoryPromptList } from "../../lib/categories";
 
 // 決済アプリ（ハーンPay など）の利用履歴のスクリーンショットから、支払いを複数件まとめて読み取る。
 // レシート1枚を読む /api/analyze-receipt の「履歴画面版」
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
-// app/lib/categories.ts の CATEGORIES の id と揃える
-const CATEGORIES = ["food", "eatout", "daily", "housing", "digital", "transport", "hobby", "lodging", "fashion", "learning", "health", "souvenir", "other"];
+const CATEGORY_IDS = CATEGORIES.map((c) => c.id);
 
 type HistoryItem = {
   store_name: string;
@@ -31,7 +31,7 @@ const sanitize = (raw: unknown): HistoryItem[] => {
       store_name: typeof store_name === "string" && store_name.trim() ? store_name.trim().slice(0, 100) : "不明",
       amount: yen,
       date,
-      category: typeof category === "string" && CATEGORIES.includes(category) ? category : "other",
+      category: typeof category === "string" && CATEGORY_IDS.includes(category) ? category : "other",
       kind: kind === "transfer" ? "transfer" : "payment",
     }];
   });
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       - amount: 金額（円）。正の整数。「¥」「円」「-」「,」は付けない
       - date: 取引日。画面上部の「2026年07月」のような月表示と、「7月9日」のような日付の見出しから組み立てる。
         年がどこにも書かれていない場合は、今日（${todayYMD}）より未来にならない一番近い年を補う
-      - category: 'food'(食費・スーパー・商店), 'eatout'(外食・カフェ・食堂), 'daily'(日用品・ドラッグストア), 'housing'(家賃・電気・ガス・水道), 'digital'(スマホ・ネット・AIやアプリの利用料・システム使用料), 'transport'(交通・船・バス), 'hobby'(趣味・娯楽・観光), 'lodging'(宿泊), 'fashion'(服・美容), 'learning'(本・講座), 'health'(病院・薬局), 'souvenir'(お土産・贈り物), 'other'(その他) から推測
+      - category: ${categoryPromptList()} から、いちばん近いものの id を1つ推測。スーパー・商店は 'food'、船・バスは 'transport'、AIやアプリの利用料は 'digital'
       - kind: お店での支払いなら "payment"、人へ送ったお金（「送付」「送金」など）なら "transfer"
 
       出ていったお金かどうかの見分け方:
